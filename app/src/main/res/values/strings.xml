@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">模組已啟用</string>
     <string name="status_title_inactive">模組未啟用</string>
-    <string name="status_sub_active">v1.0.7 (1007) · com.android.systemui</string>
+    <string name="status_sub_active">v1.0.8 (1008) · com.android.systemui</string>
     <string name="status_sub_inactive">請在 LSPosed 勾選「系統介面」並重啟</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.0.7</string>
+    <string name="chip_version">v1.0.8</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -167,11 +167,14 @@
     <string name="dialog_update_available_title_fmt">發現新版本 %1$s</string>
     <string name="dialog_update_latest_title">已是最新版本</string>
     <string name="dialog_update_latest_msg_fmt">目前已安裝版本（%1$s）與 LSPosed 模組倉庫最新版本（%2$s）一致。</string>
+    <string name="dialog_update_ahead_msg_fmt">目前已安裝較新版本（%1$s），LSPosed 模組倉庫目前最新版本為 %2$s。</string>
     <string name="dialog_update_ver_compare_fmt">目前版本 %1$s → 最新版本 %2$s</string>
     <string name="btn_update_download">下載更新 APK</string>
-    <string name="btn_update_open_repo">開啟 LSPosed 倉庫頁</string>
+    <string name="btn_update_open_repo">開啟倉庫頁面</string>
     <string name="dialog_changelog_title">更新日誌</string>
     <string name="btn_close">關閉</string>
+    <string name="changelog_v108_title">v1.0.8</string>
+    <string name="changelog_v108_body" formatted="false">• 升級 ColorOS 17 介面與動效：支援大標題滑動收合、頂部漸層模糊與列表彈性回彈\n• 重構選單與彈窗為懸浮底部卡片、置中彈窗與錨點選單，並精簡列表圖示\n• 修復檢查更新遠端日誌的換行、Markdown 標題與 Unicode 字元排版問題</string>
     <string name="changelog_v107_title">v1.0.7</string>
     <string name="changelog_v107_body" formatted="false">• 修復關閉媒體後，非媒體卡片與鎖屏通知高光未恢復預設顏色的問題\n• 新增從 LSPosed 模組倉庫檢查更新功能</string>
     <string name="changelog_v106_title">v1.0.6</string>

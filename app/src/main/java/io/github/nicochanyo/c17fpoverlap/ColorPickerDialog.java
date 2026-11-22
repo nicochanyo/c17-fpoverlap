@@ -3,7 +3,6 @@ package io.github.nicochanyo.c17fpoverlap;
 import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -11,7 +10,6 @@ import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -66,20 +64,18 @@ public final class ColorPickerDialog {
     }
 
     private void open(final Context context, int titleRes, final OnColorSelectedListener listener) {
-        final Dialog dialog = new Dialog(context);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        CouiBottomSheet.Palette pal = CouiBottomSheet.Palette.fromModuleTheme(context);
+        CouiBottomSheet.SheetHandle sheet = CouiBottomSheet.create(context, pal);
+        final Dialog dialog = sheet.dialog;
 
-        View root = LayoutInflater.from(context).inflate(R.layout.dialog_color_picker, null, false);
-        DynamicThemeHelper.applyAccent(root, context);
+        View root = LayoutInflater.from(context).inflate(R.layout.dialog_color_picker, sheet.card, false);
+        root.setBackground(null);
+        root.setPadding(0, 0, 0, 0);
+        sheet.card.addView(root);
+        DynamicThemeHelper.applyAccent(sheet.card, context);
         TextView tvTitle = root.findViewById(R.id.tvPickerTitle);
         if (tvTitle != null && titleRes != 0) {
             tvTitle.setText(titleRes);
-        }
-        dialog.setContentView(root);
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            int width = Math.round(context.getResources().getDisplayMetrics().widthPixels * 0.88f);
-            dialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
         }
 
         final View vPreview = root.findViewById(R.id.vPickerPreview);
