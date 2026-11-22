@@ -63,6 +63,8 @@ public final class DynamicIslandHook {
     private static final String CLS_LA_RULE_MGR = "com.oplus.systemui.plugins.seedling.notification.rule.d";
     private static final String CLS_MEDIA_MULTI_CARD_SECTION =
             "com.oplus.systemui.plugins.shared.template.section.media.j1";
+    private static final String CLS_MEDIA_MULTI_ADAPTER =
+            "com.oplus.systemui.plugins.shared.template.section.media.e1";
     private static final String CLS_MEDIA_PLAYER_SECTION =
             "com.oplus.systemui.plugins.shared.template.section.media.x1";
     private static final String CLS_MEDIA_MINI_SECTION =
@@ -114,6 +116,12 @@ public final class DynamicIslandHook {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<Object, Boolean> ACTIVE_MEDIA_CAROUSELS =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Object, Boolean> ACTIVE_MEDIA_SECTIONS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Object, Boolean> ACTIVE_MINI_SECTIONS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Boolean> TAGGED_MEDIA_ATTACH_VIEWS =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<Drawable, Boolean> ACTIVE_MEDIA_LIGHT_DRAWABLES =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, String> ACTIVE_MEDIA_HOSTS =
@@ -154,10 +162,32 @@ public final class DynamicIslandHook {
     private static volatile boolean sLoggedAgslErr;
     private static volatile int sLatestMediaCoverColor;
     private static volatile int sLastMediaRawRgb;
+    private static volatile long sLastMediaColorPromotedAtMs;
+    private static volatile long sLastActiveCheckMs;
+    private static volatile boolean sEverTrackedMediaSurface;
+    private static volatile ConfigStore.HookConfig sLastHookConfig;
     private static volatile WeakReference<Object> sLightEffectMgrRef;
     private static volatile Class<?> sSysUiStateHelperCls;
     private static volatile boolean sPendingLightEffectRefresh;
     private static volatile boolean sMediaColorRefreshPending;
+    private static final Runnable MEDIA_RECONCILE_TASK = new Runnable() {
+        @Override
+        public void run() {
+            reconcileActiveMediaColor(sLastHookConfig);
+        }
+    };
+    private static final View.OnAttachStateChangeListener MEDIA_VIEW_ATTACH_LISTENER =
+            new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    sLastMediaColorPromotedAtMs = 0L;
+                    scheduleMediaColorReconcile(sLastHookConfig);
+                }
+            };
     private static final Runnable LIGHT_EFFECT_FALLBACK = new Runnable() {
         @Override
         public void run() {
@@ -509,12 +539,20 @@ public final class DynamicIslandHook {
     }
 
     static void invalidateActiveLockLights() {
-        List<Drawable> list;
+        List<Drawable> list = new ArrayList<>();
         synchronized (ACTIVE_LOCK_LIGHT_DRAWABLES) {
-            if (ACTIVE_LOCK_LIGHT_DRAWABLES.isEmpty()) {
-                return;
+            if (!ACTIVE_LOCK_LIGHT_DRAWABLES.isEmpty()) {
+                list.addAll(ACTIVE_LOCK_LIGHT_DRAWABLES.keySet());
             }
-            list = new ArrayList<>(ACTIVE_LOCK_LIGHT_DRAWABLES.keySet());
+        }
+        synchronized (LIGHT_BASELINES) {
+            if (!LIGHT_BASELINES.isEmpty()) {
+                for (Object k : LIGHT_BASELINES.keySet()) {
+                    if (k instanceof Drawable && !list.contains(k)) {
+                        list.add((Drawable) k);
+                    }
+                }
+            }
         }
         for (int i = 0, n = list.size(); i < n; i++) {
             Drawable d = list.get(i);
@@ -543,6 +581,7 @@ public final class DynamicIslandHook {
     }
 
     private static int resolveMediaTintArgb() {
+        ensureMediaStillActive();
         int argb = sLatestMediaCoverColor;
         if (argb != 0) {
             return argb;
@@ -584,6 +623,19 @@ public final class DynamicIslandHook {
                         View gv = gradViews.get(i);
                         if (gv != null && gv.isAttachedToWindow()) {
                             patchGradientOverlay(gv, cfg);
+                        }
+                    }
+                    List<View> islandViews;
+                    synchronized (TAGGED_ISLAND_VIEW) {
+                        islandViews = TAGGED_ISLAND_VIEW.isEmpty()
+                                ? Collections.<View>emptyList()
+                                : new ArrayList<>(TAGGED_ISLAND_VIEW.keySet());
+                    }
+                    for (int i = 0, n = islandViews.size(); i < n; i++) {
+                        View iv = islandViews.get(i);
+                        if (iv != null && iv.isAttachedToWindow()) {
+                            patchViewBackgroundLayers(iv, cfg);
+                            iv.invalidate();
                         }
                     }
                     invalidateActiveLockLights();
@@ -945,6 +997,209 @@ public final class DynamicIslandHook {
         }
     }
 
+    private static void registerMediaViewAttachListener(View v) {
+        if (v == null) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(TAGGED_MEDIA_ATTACH_VIEWS.put(v, Boolean.TRUE))) {
+            try {
+                v.addOnAttachStateChangeListener(MEDIA_VIEW_ATTACH_LISTENER);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    static void onHostMediaViewDetached(ConfigStore.HookConfig cfg) {
+        if (cfg != null) {
+            sLastHookConfig = cfg;
+        }
+        sLastMediaColorPromotedAtMs = 0L;
+        scheduleMediaColorReconcile(cfg != null ? cfg : sLastHookConfig);
+    }
+
+    static void scheduleMediaColorReconcile(ConfigStore.HookConfig cfg) {
+        if (cfg != null) {
+            sLastHookConfig = cfg;
+        }
+        MAIN_HANDLER.removeCallbacks(MEDIA_RECONCILE_TASK);
+        MAIN_HANDLER.postDelayed(MEDIA_RECONCILE_TASK, 16L);
+        MAIN_HANDLER.postDelayed(MEDIA_RECONCILE_TASK, 180L);
+    }
+
+    private static boolean isAnyMediaSurfaceActive() {
+        long now = SystemClock.uptimeMillis();
+        if (now - sLastMediaColorPromotedAtMs < 600L
+                && (!ACTIVE_MEDIA_SECTIONS.isEmpty() || !ACTIVE_MINI_SECTIONS.isEmpty())) {
+            return true;
+        }
+        List<Object> sections;
+        synchronized (ACTIVE_MEDIA_SECTIONS) {
+            sections = ACTIVE_MEDIA_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MEDIA_SECTIONS.keySet());
+        }
+        for (int i = 0, n = sections.size(); i < n; i++) {
+            Object sec = sections.get(i);
+            if (sec == null) {
+                continue;
+            }
+            View mediaBg = readViewField(sec, "s");
+            if (mediaBg != null && mediaBg.isAttachedToWindow()) {
+                return true;
+            }
+        }
+        List<Object> minis;
+        synchronized (ACTIVE_MINI_SECTIONS) {
+            minis = ACTIVE_MINI_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MINI_SECTIONS.keySet());
+        }
+        for (int i = 0, n = minis.size(); i < n; i++) {
+            Object m0 = minis.get(i);
+            if (m0 == null) {
+                continue;
+            }
+            View c = readViewField(m0, "c");
+            if (c != null && c.isAttachedToWindow()) {
+                return true;
+            }
+        }
+        List<Object> carousels;
+        synchronized (ACTIVE_MEDIA_CAROUSELS) {
+            carousels = ACTIVE_MEDIA_CAROUSELS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MEDIA_CAROUSELS.keySet());
+        }
+        for (int i = 0, n = carousels.size(); i < n; i++) {
+            Object j1 = carousels.get(i);
+            if (j1 == null) {
+                continue;
+            }
+            View vp = readViewField(j1, "u");
+            Object adapter = readObjectField(j1, "v");
+            Object countObj = invokeNoArg(adapter, "getItemCount");
+            if (vp != null && vp.isAttachedToWindow()
+                    && countObj instanceof Integer && ((Integer) countObj) > 0) {
+                return true;
+            }
+        }
+        return FluidCloudHook.hasActiveMediaCustomRow();
+    }
+
+    private static void ensureMediaStillActive() {
+        if ((sLatestMediaCoverColor == 0 && sLastMediaRawRgb == 0) || !sEverTrackedMediaSurface) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (now - sLastActiveCheckMs < 150L) {
+            return;
+        }
+        sLastActiveCheckMs = now;
+        if (!isAnyMediaSurfaceActive()) {
+            CARD_MEDIA_RAW_RGB.clear();
+            sLatestMediaCoverColor = 0;
+            sLastMediaRawRgb = 0;
+            ConfigStore.HookConfig cfg = sLastHookConfig;
+            if (cfg != null) {
+                notifyMediaColorChanged(cfg);
+            }
+        }
+    }
+
+    private static void reconcileActiveMediaColor(ConfigStore.HookConfig cfg) {
+        ConfigStore.HookConfig effCfg = cfg != null ? cfg : sLastHookConfig;
+        sLastActiveCheckMs = SystemClock.uptimeMillis();
+
+        // 1. Check active MediaPlayerSection (x1) instances attached to a window
+        List<Object> sections;
+        synchronized (ACTIVE_MEDIA_SECTIONS) {
+            sections = ACTIVE_MEDIA_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MEDIA_SECTIONS.keySet());
+        }
+        Object fallbackSec = null;
+        View fallbackBg = null;
+        Drawable fallbackLight = null;
+        int fallbackArgb = 0;
+        int fallbackRaw = 0;
+
+        for (int i = 0, n = sections.size(); i < n; i++) {
+            Object sec = sections.get(i);
+            if (sec == null) {
+                continue;
+            }
+            View mediaBg = readViewField(sec, "s");
+            if (mediaBg == null || !mediaBg.isAttachedToWindow()) {
+                continue;
+            }
+            Object lightObj = readObjectField(mediaBg, "F");
+            Drawable lightDr = lightObj instanceof Drawable ? (Drawable) lightObj : null;
+            LightBaseline bl = lightDr != null ? LIGHT_BASELINES.get(lightDr) : null;
+            if (!isHostOnSelectedCarouselPage(mediaBg, bl)) {
+                continue;
+            }
+            int[] colors = new int[2];
+            extractMediaColorFromSection(sec, lightDr, colors);
+            int argb = colors[0];
+            int raw = colors[1] != 0 ? colors[1] : toRawMediaRgb(argb);
+            if (argb == 0 && raw == 0) {
+                continue;
+            }
+            String name = resolveMediaSectionName(sec, mediaBg, lightDr);
+            if (mediaBg.isShown() && canMediaSurfaceUpdateGlobalColor(mediaBg, name, bl, false)) {
+                promotePrimaryMediaColor(lightDr, mediaBg, argb, raw, effCfg);
+                return;
+            }
+            if (fallbackSec == null) {
+                fallbackSec = sec;
+                fallbackBg = mediaBg;
+                fallbackLight = lightDr;
+                fallbackArgb = argb;
+                fallbackRaw = raw;
+            }
+        }
+
+        // 2. Check active MediaMiniPlayerSection (M0) instances attached to a window
+        List<Object> minis;
+        synchronized (ACTIVE_MINI_SECTIONS) {
+            minis = ACTIVE_MINI_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MINI_SECTIONS.keySet());
+        }
+        for (int i = 0, n = minis.size(); i < n; i++) {
+            Object m0 = minis.get(i);
+            if (m0 == null) {
+                continue;
+            }
+            View c = readViewField(m0, "c");
+            if (c == null || !c.isAttachedToWindow()) {
+                continue;
+            }
+            int argb = readArtColorsArgb(readObjectField(m0, "b"), "l");
+            if (argb != 0) {
+                promotePrimaryMediaColor(null, c, argb, toRawMediaRgb(argb), effCfg);
+                return;
+            }
+        }
+
+        // 3. Fallback to any attached selected x1 section (e.g. shade collapsed while music active)
+        if (fallbackSec != null) {
+            promotePrimaryMediaColor(fallbackLight, fallbackBg, fallbackArgb, fallbackRaw, effCfg);
+            return;
+        }
+
+        // 4. If no active media surface remains, reset media colors to 0 and restore default non-media / rim colors
+        if (!isAnyMediaSurfaceActive()) {
+            CARD_MEDIA_RAW_RGB.clear();
+            boolean hadColor = (sLatestMediaCoverColor != 0 || sLastMediaRawRgb != 0);
+            sLatestMediaCoverColor = 0;
+            sLastMediaRawRgb = 0;
+            if (hadColor && effCfg != null) {
+                notifyMediaColorChanged(effCfg);
+            }
+        }
+    }
+
     /**
      * Hooks MediaPlayerMultiCardSection (j1) page selection and teardown so active media color
      * immediately tracks swipes across multiple players in ViewPager2 carousels.
@@ -963,6 +1218,8 @@ public final class DynamicIslandHook {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     if (param.thisObject != null) {
+                        sEverTrackedMediaSurface = true;
+                        sLastHookConfig = cfg;
                         ACTIVE_MEDIA_CAROUSELS.put(param.thisObject, Boolean.TRUE);
                         syncActivePageColorFromCarousel(param.thisObject, cfg, true, 0);
                     }
@@ -974,6 +1231,8 @@ public final class DynamicIslandHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         if (param.thisObject != null) {
+                            sEverTrackedMediaSurface = true;
+                            sLastHookConfig = cfg;
                             ACTIVE_MEDIA_CAROUSELS.put(param.thisObject, Boolean.TRUE);
                         }
                     }
@@ -987,8 +1246,28 @@ public final class DynamicIslandHook {
                         if (param.thisObject != null) {
                             ACTIVE_MEDIA_CAROUSELS.remove(param.thisObject);
                         }
+                        sLastMediaColorPromotedAtMs = 0L;
+                        scheduleMediaColorReconcile(cfg);
                     }
                 });
+            }
+            Class<?> adapterCls = XposedCompat.findClassIfExists(CLS_MEDIA_MULTI_ADAPTER, pluginCl);
+            if (adapterCls != null) {
+                for (Method m : adapterCls.getDeclaredMethods()) {
+                    if ("b".equals(m.getName()) && m.getParameterTypes().length == 2) {
+                        XposedCompat.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void afterHookedMethod(MethodHookParam param) {
+                                if (param.args.length > 0 && (param.args[0] == null
+                                        || (param.args[0] instanceof List && ((List<?>) param.args[0]).isEmpty()))) {
+                                    sLastMediaColorPromotedAtMs = 0L;
+                                }
+                                scheduleMediaColorReconcile(cfg);
+                            }
+                        });
+                        break;
+                    }
+                }
             }
             return true;
         } catch (Throwable t) {
@@ -1049,11 +1328,25 @@ public final class DynamicIslandHook {
                 XposedCompat.hookMethod(mDispose, new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) {
+                        if (param.thisObject != null) {
+                            ACTIVE_MEDIA_SECTIONS.remove(param.thisObject);
+                        }
                         View mediaBg = readViewField(param.thisObject, "s");
                         if (mediaBg != null) {
                             ACTIVE_MEDIA_HOSTS.remove(mediaBg);
                             MEDIA_BG_TO_SECTION.remove(mediaBg);
+                            Object lightObj = readObjectField(mediaBg, "F");
+                            if (lightObj != null) {
+                                ACTIVE_MEDIA_LIGHT_DRAWABLES.remove(lightObj);
+                                LIGHT_COVER_COLOR.remove(lightObj);
+                            }
+                            View cardRoot = resolveEnclosingCardRoot(mediaBg);
+                            if (cardRoot != null) {
+                                CARD_MEDIA_RAW_RGB.remove(cardRoot);
+                            }
                         }
+                        sLastMediaColorPromotedAtMs = 0L;
+                        scheduleMediaColorReconcile(cfg);
                     }
                 });
                 hooked = true;
@@ -1075,23 +1368,53 @@ public final class DynamicIslandHook {
             if (miniCls == null) {
                 return false;
             }
-            Method mApply = findMethod(miniCls, "m");
-            if (mApply == null) {
-                return false;
-            }
-            XposedCompat.hookMethod(mApply, new XC_MethodHook() {
+            XC_MethodHook miniActiveHook = new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    if (param.thisObject == null || hasVisibleSelectedMediaSurface(null, null)) {
+                    if (param.thisObject == null) {
+                        return;
+                    }
+                    sEverTrackedMediaSurface = true;
+                    sLastHookConfig = cfg;
+                    ACTIVE_MINI_SECTIONS.put(param.thisObject, Boolean.TRUE);
+                    View container = readViewField(param.thisObject, "c");
+                    registerMediaViewAttachListener(container);
+                    if (hasVisibleSelectedMediaSurface(null, null)) {
                         return;
                     }
                     int argb = readArtColorsArgb(readObjectField(param.thisObject, "b"), "l");
                     if (argb != 0) {
-                        View container = readViewField(param.thisObject, "c");
                         promotePrimaryMediaColor(null, container, argb, toRawMediaRgb(argb), cfg);
                     }
                 }
-            });
+            };
+            Method mApply = findMethod(miniCls, "m");
+            if (mApply == null) {
+                return false;
+            }
+            XposedCompat.hookMethod(mApply, miniActiveHook);
+            Method mBind = findMethod(miniCls, "b");
+            if (mBind != null) {
+                XposedCompat.hookMethod(mBind, miniActiveHook);
+            }
+            Method mDispose = findMethod(miniCls, "dispose");
+            if (mDispose != null) {
+                XposedCompat.hookMethod(mDispose, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (param.thisObject != null) {
+                            ACTIVE_MINI_SECTIONS.remove(param.thisObject);
+                            Object lightObj = readObjectField(param.thisObject, "p");
+                            if (lightObj != null) {
+                                LIGHT_COVER_COLOR.remove(lightObj);
+                                ACTIVE_LOCK_LIGHT_DRAWABLES.remove(lightObj);
+                            }
+                        }
+                        sLastMediaColorPromotedAtMs = 0L;
+                        scheduleMediaColorReconcile(cfg);
+                    }
+                });
+            }
             return true;
         } catch (Throwable t) {
             cfg.note("DynamicIsland: MediaMiniSection hook failed: " + t);
@@ -1137,8 +1460,12 @@ public final class DynamicIslandHook {
         if ("MP_MiniCard".equals(name)) {
             return;
         }
+        sEverTrackedMediaSurface = true;
+        sLastHookConfig = cfg;
+        ACTIVE_MEDIA_SECTIONS.put(section, Boolean.TRUE);
         ACTIVE_MEDIA_HOSTS.put(mediaBg, name);
         MEDIA_BG_TO_SECTION.put(mediaBg, section);
+        registerMediaViewAttachListener(mediaBg);
         if (lightDr != null) {
             ACTIVE_MEDIA_LIGHT_DRAWABLES.put(lightDr, Boolean.TRUE);
         }
@@ -2539,10 +2866,12 @@ public final class DynamicIslandHook {
     }
 
     static int getLatestMediaCoverColor() {
+        ensureMediaStillActive();
         return sLatestMediaCoverColor;
     }
 
     static int getLastMediaRawRgb() {
+        ensureMediaStillActive();
         return sLastMediaRawRgb;
     }
 
@@ -2563,6 +2892,7 @@ public final class DynamicIslandHook {
         if (cfg == null) {
             return 0;
         }
+        ensureMediaStillActive();
         int raw = sLastMediaRawRgb;
         if (raw == 0 && sLatestMediaCoverColor != 0) {
             raw = toRawMediaRgb(sLatestMediaCoverColor);
@@ -2659,8 +2989,10 @@ public final class DynamicIslandHook {
         if ("MP_MiniCard".equals(name)) {
             return;
         }
+        ACTIVE_MEDIA_SECTIONS.put(section, Boolean.TRUE);
         ACTIVE_MEDIA_HOSTS.put(mediaBg, name);
         MEDIA_BG_TO_SECTION.put(mediaBg, section);
+        registerMediaViewAttachListener(mediaBg);
         if (lightDr != null) {
             ACTIVE_MEDIA_LIGHT_DRAWABLES.put(lightDr, Boolean.TRUE);
         }
@@ -2953,8 +3285,14 @@ public final class DynamicIslandHook {
         boolean changed = (sLatestMediaCoverColor != effArgb) || (sLastMediaRawRgb != effRaw);
         sLatestMediaCoverColor = effArgb;
         sLastMediaRawRgb = effRaw;
+        sLastMediaColorPromotedAtMs = SystemClock.uptimeMillis();
+        sEverTrackedMediaSurface = true;
+        if (cfg != null) {
+            sLastHookConfig = cfg;
+        }
 
         View host = hostView != null ? hostView : (lightDr != null ? resolveDrawableHostView(lightDr) : null);
+        registerMediaViewAttachListener(host);
         updateCardMediaRawRgb(resolveEnclosingCardRoot(host), effRaw, cfg);
         if (changed) {
             notifyMediaColorChanged(cfg);

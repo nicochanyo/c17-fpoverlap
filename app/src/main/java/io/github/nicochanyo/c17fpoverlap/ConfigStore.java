@@ -261,7 +261,6 @@ public final class ConfigStore {
         }
         try {
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            migrateFromLegacyPackageIfNeeded(ctx, prefs);
             return normalizeLanguage(prefs.getString(KEY_APP_LANG, LANG_SYSTEM));
         } catch (Throwable ignored) {
             return LANG_SYSTEM;
@@ -386,7 +385,6 @@ public final class ConfigStore {
         }
         try {
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            migrateFromLegacyPackageIfNeeded(ctx, prefs);
             return normalizeDarkMode(prefs.getInt(KEY_APP_DARK_MODE, DARK_MODE_SYSTEM));
         } catch (Throwable ignored) {
             return DARK_MODE_SYSTEM;
@@ -444,42 +442,8 @@ public final class ConfigStore {
         }
     }
 
-    private static volatile boolean sLegacyMigrationChecked;
-
-    private static void migrateFromLegacyPackageIfNeeded(Context ctx, SharedPreferences prefs) {
-        if (ctx == null || prefs == null || sLegacyMigrationChecked) {
-            return;
-        }
-        if (hasAnySetting(prefs)) {
-            sLegacyMigrationChecked = true;
-            return;
-        }
-        sLegacyMigrationChecked = true;
-        try {
-            Bundle res = ctx.getContentResolver().call(
-                    Uri.parse(XposedProvider.LEGACY_AUTHORITY_URI),
-                    XposedProvider.METHOD_EXPORT_PREFS,
-                    null,
-                    null);
-            if (res == null) {
-                return;
-            }
-            res.setClassLoader(ConfigStore.class.getClassLoader());
-            Object mapObj = res.getSerializable("map");
-            if (mapObj instanceof Map<?, ?>) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> map = (Map<String, Object>) mapObj;
-                if (!map.isEmpty()) {
-                    XposedProvider.writePrefsFromMap(prefs, map);
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-    }
-
     public static AppPrefs openAppPrefs(Context ctx) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        migrateFromLegacyPackageIfNeeded(ctx, prefs);
         migrateFluidCloudSettings(ctx, prefs);
         boolean hadLocal = hasAnySetting(prefs);
         boolean serviceActive = XposedProvider.isConnected();

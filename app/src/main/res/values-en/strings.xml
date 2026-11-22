@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">Module Active</string>
     <string name="status_title_inactive">Module Inactive</string>
-    <string name="status_sub_active">v1.0.6 (1006) · com.android.systemui</string>
+    <string name="status_sub_active">v1.0.7 (1007) · com.android.systemui</string>
     <string name="status_sub_inactive">Enable System UI in LSPosed and reboot</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.0.6</string>
+    <string name="chip_version">v1.0.7</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -172,6 +172,8 @@
     <string name="btn_update_open_repo">Open LSPosed Repo Page</string>
     <string name="dialog_changelog_title">Changelog</string>
     <string name="btn_close">Close</string>
+    <string name="changelog_v107_title">v1.0.7</string>
+    <string name="changelog_v107_body" formatted="false">• Fixed non-media cards and lockscreen notification rim highlights not reverting to default colors after closing media\n• Added in-app update checker sourcing from LSPosed Repository</string>
     <string name="changelog_v106_title">v1.0.6</string>
     <string name="changelog_v106_body" formatted="false">• Fixed mask follow-media tinting failing when system Flowing Contour (Highlight) is turned off\n• Added "Follow System" language option (auto-selects Traditional Chinese, Simplified Chinese, or English)\n• Simplified UI labels and descriptions across the app</string>
     <string name="changelog_v105_title">v1.0.5</string>

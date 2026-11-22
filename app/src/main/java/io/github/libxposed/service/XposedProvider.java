@@ -31,7 +31,6 @@ public final class XposedProvider extends ContentProvider {
     private static final String METHOD_SEND_BINDER = "SendBinder";
     public static final String METHOD_EXPORT_PREFS = "ExportLocalPrefs";
     public static final String METHOD_IMPORT_PREFS = "ImportLocalPrefs";
-    public static final String LEGACY_AUTHORITY_URI = "content://c17.fpoverlap.XposedService";
     private static final String PREFS_NAME = "config";
     private static final String KEY_BINDER = "binder";
     private static final String INTERFACE_TOKEN = "io.github.libxposed.service.IXposedService";
@@ -233,20 +232,6 @@ public final class XposedProvider extends ContentProvider {
                 Object obj = extras.getSerializable("map");
                 if (obj instanceof Map<?, ?>) {
                     srcMap = (Map<?, ?>) obj;
-                }
-            }
-            if (srcMap == null) {
-                try {
-                    Bundle remote = getContext().getContentResolver().call(
-                            Uri.parse(LEGACY_AUTHORITY_URI), METHOD_EXPORT_PREFS, null, null);
-                    if (remote != null) {
-                        remote.setClassLoader(XposedProvider.class.getClassLoader());
-                        Object obj = remote.getSerializable("map");
-                        if (obj instanceof Map<?, ?>) {
-                            srcMap = (Map<?, ?>) obj;
-                        }
-                    }
-                } catch (Throwable ignored) {
                 }
             }
             int count = writePrefsFromMap(sp, srcMap);

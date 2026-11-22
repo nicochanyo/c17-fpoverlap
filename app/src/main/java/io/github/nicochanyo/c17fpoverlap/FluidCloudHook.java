@@ -476,6 +476,18 @@ public final class FluidCloudHook {
         return rows;
     }
 
+    static boolean hasActiveMediaCustomRow() {
+        Set<View> rows = collectActiveCustomRows(sPrimaryCl);
+        for (View rowView : rows) {
+            if (rowView != null && rowView.isAttachedToWindow()
+                    && rowView.getVisibility() == View.VISIBLE
+                    && isMediaCustomRow(rowView)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static void onMediaColorChanged(final ConfigStore.HookConfig cfg) {
         if (cfg == null || sMediaColorSyncPending) {
             return;
@@ -488,6 +500,17 @@ public final class FluidCloudHook {
                 if (cfg.isFcEnabled() && (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled())) {
                     ClassLoader cl = sPrimaryCl;
                     Set<View> rows = collectActiveCustomRows(cl);
+                    boolean anyLockMedia = false;
+                    for (View rowView : rows) {
+                        if (rowView != null && rowView.isAttachedToWindow()) {
+                            Object mgr = readField(rowView, "viewBlurManager");
+                            if (isCustomOnLockscreen(mgr, null) && isMediaCustomRow(rowView)) {
+                                anyLockMedia = true;
+                                break;
+                            }
+                        }
+                    }
+                    sLastLockCustomRowIsMedia = anyLockMedia;
                     for (View rowView : rows) {
                         if (rowView == null || !rowView.isAttachedToWindow()) {
                             continue;
@@ -1348,6 +1371,7 @@ public final class FluidCloudHook {
                 if (pbd instanceof Drawable) {
                     ((Drawable) pbd).invalidateSelf();
                 }
+                callNoArg(proxy, "applyBlurConfig");
             }
             Object multiHelper = proxy != null ? callNoArg(proxy, "getMultiPlatformBlurHelper") : null;
             Object cfgMapObj = multiHelper != null ? readField(multiHelper, "configMap") : null;
@@ -1947,6 +1971,24 @@ public final class FluidCloudHook {
                             DynamicIslandHook.setCardBackgroundViewsAlphaInTree(
                                     rowView, clamp01(1.0f - easeAodProgress(aodProg)));
                             LAST_CUSTOM_MIX_VER.put(rowView, computeCustomMixKey(cfg, aodProg));
+                        }
+                    }
+                });
+                ok = true;
+            }
+            Method mDetach = findMethod(cls, "onDetachedFromWindow");
+            if (mDetach != null) {
+                XposedCompat.hookMethod(mDetach, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (!(param.thisObject instanceof View)) {
+                            return;
+                        }
+                        View rowView = (View) param.thisObject;
+                        ACTIVE_CUSTOM_ROWS.remove(rowView);
+                        if (isMediaCustomRow(rowView) || sLastLockCustomRowIsMedia) {
+                            sLastLockCustomRowIsMedia = hasActiveMediaCustomRow();
+                            DynamicIslandHook.onHostMediaViewDetached(cfg);
                         }
                     }
                 });

@@ -16,7 +16,9 @@ $androidJar = Join-Path $PSScriptRoot 'tools\android-35.jar'
 $signerJar = Join-Path $PSScriptRoot 'tools\uber-apk-signer-1.3.0.jar'
 $buildDir = Join-Path $PSScriptRoot 'build'
 $outDir = Join-Path $PSScriptRoot 'out'
-$finalApk = Join-Path $outDir 'C17锁屏流体云优化-1.0.6.apk'
+$manifestXml = Get-Content (Join-Path $PSScriptRoot 'app\src\main\AndroidManifest.xml') -Raw -Encoding UTF8
+$verName = if ($manifestXml -match 'android:versionName="([^"]+)"') { $Matches[1] } else { '1.0.7' }
+$finalApk = Join-Path $outDir "C17锁屏流体云优化-$verName.apk"
 
 # === 簽名設定（優先讀取 keystore.properties 或環境變數；無私鑰時改用 Debug 簽章）===
 $ksProps = @{}

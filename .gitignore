@@ -6,10 +6,9 @@ keystore.properties
 
 # Build & signing artifacts
 build/
-out/*.idsig
-out/*debugSigned*
-out/*fix1*
-out/*coui*
+out/
+compile-stubs/
+tools/
 
 # IDE & OS metadata
 .idea/

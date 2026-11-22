@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">模块已启用</string>
     <string name="status_title_inactive">模块未启用</string>
-    <string name="status_sub_active">v1.0.6 (1006) · com.android.systemui</string>
+    <string name="status_sub_active">v1.0.7 (1007) · com.android.systemui</string>
     <string name="status_sub_inactive">请在 LSPosed 勾选「系统界面」并重启</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.0.6</string>
+    <string name="chip_version">v1.0.7</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -172,6 +172,8 @@
     <string name="btn_update_open_repo">打开 LSPosed 仓库页</string>
     <string name="dialog_changelog_title">更新日志</string>
     <string name="btn_close">关闭</string>
+    <string name="changelog_v107_title">v1.0.7</string>
+    <string name="changelog_v107_body" formatted="false">• 修复关闭媒体后，非媒体卡片与锁屏通知高光未恢复默认颜色的问题\n• 新增从 LSPosed 模块仓库检查更新功能</string>
     <string name="changelog_v106_title">v1.0.6</string>
     <string name="changelog_v106_body" formatted="false">• 修复关闭系统「流光轮廓（高光）」时，遮罩跟随媒体变色失效的问题\n• 新增界面语言「跟随系统」，默认按系统语言自动切换繁中、简中或英文\n• 精简全应用设置项与说明用词</string>
     <string name="changelog_v105_title">v1.0.5</string>

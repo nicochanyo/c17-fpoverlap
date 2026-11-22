@@ -1983,6 +1983,7 @@ public class MainActivity extends Activity {
         scroll.addView(list);
 
         int[] verTitles = new int[]{
+                R.string.changelog_v107_title,
                 R.string.changelog_v106_title,
                 R.string.changelog_v105_title,
                 R.string.changelog_v104_title,
@@ -1992,6 +1993,7 @@ public class MainActivity extends Activity {
                 R.string.changelog_v100_title
         };
         int[] verBodies = new int[]{
+                R.string.changelog_v107_body,
                 R.string.changelog_v106_body,
                 R.string.changelog_v105_body,
                 R.string.changelog_v104_body,
@@ -2093,7 +2095,7 @@ public class MainActivity extends Activity {
             //noinspection deprecation
             return pi.versionCode;
         } catch (Throwable ignored) {
-            return 1006;
+            return 1007;
         }
     }
 
@@ -2105,12 +2107,12 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-        return "1.0.6";
+        return "1.0.7";
     }
 
     private static String formatVerLabel(String ver) {
         if (ver == null || ver.trim().isEmpty()) {
-            return "v1.0.6";
+            return "v1.0.7";
         }
         String t = ver.trim();
         if (t.startsWith("v") || t.startsWith("V")) {
@@ -2260,7 +2262,7 @@ public class MainActivity extends Activity {
             out.versionName = !name.isEmpty() ? name : tag;
         }
         if (out.versionName == null || out.versionName.isEmpty()) {
-            out.versionName = "1.0.6";
+            out.versionName = "1.0.7";
         }
     }
 
