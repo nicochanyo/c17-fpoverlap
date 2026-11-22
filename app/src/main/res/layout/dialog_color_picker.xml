@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_coui_card"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tvPickerTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
+        android:text="@string/dialog_color_title"
+        android:textColor="?attr/couiTextPrimary"
+        android:textSize="18sp" />
+
+    <!-- Live swatch preview + HEX input -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_coui_subcard"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <View
+            android:id="@+id/vPickerPreview"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/bg_coui_swatch" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:fontFamily="monospace"
+            android:text="#"
+            android:textColor="?attr/couiTextSecondary"
+            android:textSize="16sp" />
+
+        <EditText
+            android:id="@+id/etColorHex"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:background="@null"
+            android:fontFamily="monospace"
+            android:hint="4FC3F7"
+            android:imeOptions="actionDone"
+            android:inputType="textCapCharacters|textNoSuggestions"
+            android:maxLength="6"
+            android:singleLine="true"
+            android:textColor="?attr/couiTextPrimary"
+            android:textColorHint="?attr/couiTextTertiary"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <!-- 8 preset swatches row -->
+    <LinearLayout
+        android:id="@+id/layoutPresets"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:orientation="horizontal" />
+
+    <!-- R slider -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="@string/label_color_red"
+            android:textColor="?attr/couiTextSecondary"
+            android:textSize="13sp" />
+
+        <io.github.nicochanyo.c17fpoverlap.CouiPillSeekBar
+            android:id="@+id/sbColorR"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:max="255" />
+
+        <TextView
+            android:id="@+id/tvColorRVal"
+            android:layout_width="34dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:textColor="?attr/couiTextPrimary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- G slider -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="@string/label_color_green"
+            android:textColor="?attr/couiTextSecondary"
+            android:textSize="13sp" />
+
+        <io.github.nicochanyo.c17fpoverlap.CouiPillSeekBar
+            android:id="@+id/sbColorG"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:max="255" />
+
+        <TextView
+            android:id="@+id/tvColorGVal"
+            android:layout_width="34dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:textColor="?attr/couiTextPrimary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- B slider -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="@string/label_color_blue"
+            android:textColor="?attr/couiTextSecondary"
+            android:textSize="13sp" />
+
+        <io.github.nicochanyo.c17fpoverlap.CouiPillSeekBar
+            android:id="@+id/sbColorB"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:max="255" />
+
+        <TextView
+            android:id="@+id/tvColorBVal"
+            android:layout_width="34dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:textColor="?attr/couiTextPrimary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Optional A (Alpha) slider for mask opacity -->
+    <LinearLayout
+        android:id="@+id/layoutColorAlpha"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="48dp"
+            android:layout_height="wrap_content"
+            android:text="@string/label_color_alpha"
+            android:textColor="?attr/couiTextSecondary"
+            android:textSize="13sp" />
+
+        <io.github.nicochanyo.c17fpoverlap.CouiPillSeekBar
+            android:id="@+id/sbColorA"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:max="255" />
+
+        <TextView
+            android:id="@+id/tvColorAVal"
+            android:layout_width="40dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:textColor="?attr/couiTextPrimary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Action buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnPickerCancel"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_coui_btn_secondary"
+            android:fontFamily="sans-serif-medium"
+            android:stateListAnimator="@null"
+            android:text="@string/btn_cancel"
+            android:textAllCaps="false"
+            android:textColor="?attr/couiTextPrimary"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnPickerApply"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_coui_btn_primary"
+            android:fontFamily="sans-serif-medium"
+            android:stateListAnimator="@null"
+            android:tag="accent_btn"
+            android:text="@string/btn_apply_color"
+            android:textAllCaps="false"
+            android:textColor="?attr/couiOnAccent"
+            android:textSize="15sp" />
+    </LinearLayout>
+</LinearLayout>

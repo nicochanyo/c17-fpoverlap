@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.nicochanyo.c17fpoverlap"
+    android:versionCode="1006"
+    android:versionName="1.0.6">
+
+    <uses-sdk
+        android:minSdkVersion="26"
+        android:targetSdkVersion="35" />
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <queries>
+        <package android:name="c17.fpoverlap" />
+        <provider android:authorities="c17.fpoverlap.XposedService" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:description="@string/xposed_description"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.CouiFpOverlap">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.INFO" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name="io.github.libxposed.service.XposedProvider"
+            android:authorities="io.github.nicochanyo.c17fpoverlap.XposedService"
+            android:exported="true" />
+
+    </application>
+</manifest>

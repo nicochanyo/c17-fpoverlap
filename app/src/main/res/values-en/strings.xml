@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">C17 Lock &amp; Fluid Cloud</string>
+    <string name="xposed_description">ColorOS 17 optical FP capsule alignment, music lockscreen FP, Fluid Cloud opacity, highlight &amp; mask controls</string>
+
+    <!-- Bottom Navigation & Header -->
+    <string name="nav_lockscreen">Lock</string>
+    <string name="nav_appearance">Island</string>
+    <string name="nav_about">About</string>
+
+    <string name="page_title_lockscreen">C17 Lock &amp; Fluid Cloud</string>
+    <string name="page_subtitle_lockscreen">Optical FP · Music Lock · Notifications</string>
+    <string name="page_title_appearance">Fluid Cloud</string>
+    <string name="page_subtitle_appearance">Opacity · Blur · Highlight · Mask</string>
+    <string name="page_title_about">About Module</string>
+    <string name="page_subtitle_about">Status · Preferences · Credits</string>
+
+    <!-- Top Status Card -->
+    <string name="status_title_active">Module Active</string>
+    <string name="status_title_inactive">Module Inactive</string>
+    <string name="status_sub_active">v1.0.6 (1006) · com.android.systemui</string>
+    <string name="status_sub_inactive">Enable System UI in LSPosed and reboot</string>
+    <string name="badge_api_102">API 102</string>
+
+    <string name="chip_version">v1.0.6</string>
+    <string name="chip_lsposed">API 102</string>
+
+    <!-- Tab 0: Lockscreen & Fingerprint -->
+    <string name="section_fp_capsule">Fingerprint &amp; Capsule</string>
+    <string name="pref_align_title">Align Capsule to FP</string>
+    <string name="pref_align_summary">Move lockscreen &amp; AOD capsule to FP position without jump</string>
+
+    <string name="sub_capsule_fine">Position &amp; Auto-Hide</string>
+    <string name="pref_hide_fp_title">Hide FP Icon on Overlap</string>
+    <string name="pref_hide_fp_summary">Hide FP icon when covered by capsule while keeping unlock active</string>
+    <string name="pref_offset_title">Vertical Offset</string>
+    <string name="pref_offset_hint">+ up, - down (-150 ~ +150 px)</string>
+    <string name="btn_zero">Reset</string>
+    <string name="btn_minus">−</string>
+    <string name="btn_plus">+</string>
+
+    <string name="section_music_lockscreen">Music Lockscreen</string>
+    <string name="pref_immersive_fp_title">Show FP on Music Lock</string>
+    <string name="pref_immersive_fp_summary">Keep FP icon &amp; unlock when lockscreen media card is expanded</string>
+
+    <string name="section_aod_notif">Lockscreen Notifications</string>
+    <string name="pref_aod_notif_translucent_title">Translucent AOD Notifications</string>
+    <string name="pref_aod_notif_translucent_summary">Remove dark AOD backing on notifications to match media card glass</string>
+    <string name="pref_lock_notif_glow_follow_media_title">Notification Rim Follows Media</string>
+    <string name="pref_lock_notif_glow_follow_media_summary">Tint lockscreen notification border highlight with album art color</string>
+
+    <string name="btn_reset_page">Reset Defaults</string>
+    <string name="btn_restart_ui">Restart System UI</string>
+
+    <!-- Tab 1: Appearance (Fluid Cloud & Dynamic Island) -->
+    <string name="section_preview">Live Preview</string>
+    <string name="section_fc_tuning">Appearance</string>
+    <string name="pref_fc_enabled_title">Enable Appearance Tuning</string>
+    <string name="pref_fc_enabled_summary">Customize top expanded card, lockscreen &amp; shade Fluid Cloud</string>
+
+    <string name="sub_fc_blur_opacity">Opacity &amp; Blur</string>
+    <string name="pref_fc_island_opacity_title">Expanded Card Opacity</string>
+    <string name="pref_fc_island_opacity_hint" formatted="false">0% clear, 100% default background</string>
+    <string name="pref_fc_opacity_title">Lockscreen Opacity</string>
+    <string name="pref_fc_opacity_hint" formatted="false">0% clear, 100% system default</string>
+    <string name="pref_fc_blur_title">Blur Strength</string>
+    <string name="pref_fc_bottom_glow_title">Large Media Highlight Brightness</string>
+    <string name="pref_fc_bottom_glow_hint" formatted="false">0% default, up to 200% brighter</string>
+    <string name="pref_fc_bottom_glow_chroma_title">Large Media Highlight Chroma</string>
+    <string name="pref_fc_bottom_glow_chroma_hint" formatted="false">0% default, up to 200% richer color</string>
+    <string name="pref_fc_single_glow_title">Single-Line Highlight Brightness</string>
+    <string name="pref_fc_single_glow_hint" formatted="false">0% default, up to 200% brighter</string>
+    <string name="pref_fc_single_glow_chroma_title">Single-Line Highlight Chroma</string>
+    <string name="pref_fc_single_glow_chroma_hint" formatted="false">0% default, up to 200% richer color</string>
+    <string name="pref_fc_remove_island_mask_title">Remove Expanded Card Mask</string>
+    <string name="pref_fc_remove_island_mask_summary">Remove black gradient mask on top expanded card (disables mask tint here)</string>
+    <string name="pref_fc_match_card_title">Remove Lockscreen Mask</string>
+    <string name="pref_fc_match_card_summary">Remove black gradient mask on lockscreen capsule &amp; card (disables mask tint here)</string>
+    <string name="pref_fc_remove_shade_mask_title">Remove Shade Mask</string>
+    <string name="pref_fc_remove_shade_mask_summary">Remove black gradient mask on notification shade cards (disables mask tint here)</string>
+    <string name="pref_fc_mask_follow_media_title">Tint Mask with Media Color</string>
+    <string name="pref_fc_mask_follow_media_summary">Tint unremoved masks (expanded, lockscreen &amp; shade) from album art</string>
+    <string name="pref_fc_mask_brightness_title">Mask Brightness</string>
+    <string name="pref_fc_mask_brightness_hint">Adjust brightness of the media-tinted mask</string>
+    <string name="pref_fc_mask_chroma_title">Mask Chroma</string>
+    <string name="pref_fc_mask_chroma_hint" formatted="false">0% dark gray, 100% vivid color</string>
+    <string name="pref_fc_mask_strength_title">Media Mask Opacity</string>
+    <string name="pref_fc_mask_strength_hint" formatted="false">0% hidden, 100% default, up to 200% stronger</string>
+    <string name="pref_fc_non_media_mask_opacity_title">Non-Media Mask Opacity</string>
+    <string name="pref_fc_non_media_mask_opacity_hint" formatted="false">Adjust mask opacity for timer, hotspot &amp; other cards (0% ~ 200%)</string>
+    <string name="pref_fc_non_media_mask_title">Tint Non-Media Cards with Media</string>
+    <string name="pref_fc_non_media_mask_summary">Apply album art color to non-media card masks (if not removed) &amp; highlights</string>
+    <string name="pref_fc_non_media_mask_color_title">Custom Non-Media Mask Color</string>
+    <string name="pref_fc_non_media_mask_color_summary">Tap to pick a fixed mask color</string>
+    <string name="label_stock_mask">System Default</string>
+
+    <string name="group_fc_opacity_cards">Card Opacity</string>
+    <string name="group_fc_opacity_blur">Background Blur</string>
+    <string name="group_fc_highlight_large_media">Large Media Card</string>
+    <string name="group_fc_highlight_single_line">Single-Line &amp; Other Cards</string>
+    <string name="group_fc_mask_switches">Remove Black Masks</string>
+    <string name="group_fc_mask_media">Media Mask Tint</string>
+    <string name="group_fc_mask_non_media">Non-Media Card Mask</string>
+
+    <string name="menu_fc_opacity_blur_title">Opacity &amp; Blur</string>
+    <string name="menu_fc_highlight_title">Highlight</string>
+    <string name="menu_fc_masks_title">Mask Settings</string>
+    <string name="menu_fc_masks_summary">Remove black gradient masks or tint from cover art</string>
+    <string name="menu_fc_tint_title">Card Color</string>
+    <string name="summary_fc_opacity_blur_fmt" formatted="false">Island %d%% · Lock %d%% · Blur %d%%</string>
+    <string name="summary_fc_highlight_fmt" formatted="false">Large %d%%/%d%% · Single %d%%/%d%%</string>
+    <string name="summary_fc_masks_media">Tinted by media cover</string>
+    <string name="summary_fc_masks_removed_fmt" formatted="false">%d masks removed</string>
+    <string name="summary_fc_masks_stock">System default</string>
+
+    <string name="sub_fc_tint">Card Color</string>
+    <string name="pref_fc_follow_stock_title">Use Default Card Color</string>
+    <string name="pref_fc_follow_stock_summary">Keep stock color, only adjust opacity and blur</string>
+    <string name="pref_fc_color_title">Custom Card Color</string>
+    <string name="pref_fc_color_summary">Pick a color or enter HEX code</string>
+    <string name="label_stock_tint">Default</string>
+
+    <!-- Color Picker Dialog -->
+    <string name="dialog_color_title">Custom Card Color</string>
+    <string name="label_color_alpha">Alpha</string>
+    <string name="label_color_red">R</string>
+    <string name="label_color_green">G</string>
+    <string name="label_color_blue">B</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_confirm">OK</string>
+    <string name="btn_apply_color">Apply</string>
+    <string name="dialog_input_range_fmt" formatted="false">Range: %d ~ %d %s</string>
+
+    <!-- Tab 2: About -->
+    <string name="about_hero_desc">Optical FP capsule alignment &amp; auto-hide, music lockscreen FP, plus Fluid Cloud opacity, blur, highlight &amp; mask controls.</string>
+    <string name="about_free_notice">Free to use. Reselling is strictly prohibited!</string>
+    <string name="section_environment">Environment</string>
+    <string name="about_sys_ver_title">System Version</string>
+    <string name="about_device_title">Device</string>
+    <string name="about_env_channel_title">Config Sync</string>
+    <string name="channel_xsp">LSPosed RemotePreferences</string>
+    <string name="channel_root_file">Root Shared Config</string>
+    <string name="channel_private_warn">Local Only (Inactive)</string>
+    <string name="about_scope_title">Target Scope</string>
+    <string name="about_scope_value">com.android.systemui</string>
+    <string name="about_conflict_title">Compatibility Note</string>
+    <string name="about_conflict_summary">Disable other Fluid Cloud or FP overlap modules to avoid conflicts.</string>
+
+    <string name="section_credits">Credits</string>
+    <string name="about_orig_author_title">Original Author: CoolApk @白无爱</string>
+    <string name="about_orig_author_summary">Optical FP lockscreen overlap · Tap for CoolApk</string>
+    <string name="about_fc_ref_title">Fluid Cloud Author: CoolApk @天伞桜</string>
+    <string name="about_fc_ref_summary">Fluid Cloud (com.sakur.fluidcloud) · Tap for CoolApk</string>
+    <string name="about_mod_author_title">Mod: o永夜o (@nicochanyo)</string>
+    <string name="about_mod_author_summary">FP auto-hide, music lockscreen FP, Fluid Cloud highlight &amp; mask controls · Tap for CoolApk</string>
+
+    <string name="section_system_ops">System Actions</string>
+    <string name="about_changelog_title">Changelog</string>
+    <string name="about_changelog_summary">View version history</string>
+    <string name="dialog_changelog_title">Changelog</string>
+    <string name="btn_close">Close</string>
+    <string name="changelog_v106_title">v1.0.6</string>
+    <string name="changelog_v106_body" formatted="false">• Fixed mask follow-media tinting failing when system Flowing Contour (Highlight) is turned off\n• Added "Follow System" language option (auto-selects Traditional Chinese, Simplified Chinese, or English)\n• Simplified UI labels and descriptions across the app</string>
+    <string name="changelog_v105_title">v1.0.5</string>
+    <string name="changelog_v105_body" formatted="false">• Split highlight brightness &amp; chroma (0%–200%) for Large Media Cards vs Single-Line cards\n• Added "Notification Rim Follows Media" toggle\n• Fixed stacked lockscreen cards losing tint or flickering on expand\n• Fixed lockscreen non-media tint staying on the previous song and lock-to-shade transition issues\n• Fixed white pickup-code card backgrounds being too bright for white text\n• Added Fluid Cloud Test Mode &amp; test notification sender</string>
+    <string name="changelog_v104_title">v1.0.4</string>
+    <string name="changelog_v104_body" formatted="false">• Matched brightness between lockscreen media cards and expanded cards at equal opacity\n• Separated mask opacity from card background opacity\n• Added Media Mask Opacity, Non-Media Mask Opacity sliders &amp; Non-Media Follow Media toggle\n• Kept clean translucent glass in fullscreen AOD and added Translucent AOD Notifications toggle\n• Smoother lockscreen-to-AOD fade for media cards and highlights\n• Grouped sub-menu controls into cards and added Changelog in About</string>
+    <string name="changelog_v103_title">v1.0.3</string>
+    <string name="changelog_v103_body" formatted="false">• Organized appearance settings into four collapsible menus\n• Added brightness &amp; chroma sliders for media-tinted masks\n• Linked lockscreen opacity to lockscreen dark masks</string>
+    <string name="changelog_v102_title">v1.0.2</string>
+    <string name="changelog_v102_body" formatted="false">• Split black mask toggles for Expanded Card, Lockscreen, and Shade\n• Added mask tinting from album cover art</string>
+    <string name="changelog_v101_title">v1.0.1</string>
+    <string name="changelog_v101_body" formatted="false">• Split highlight into brightness &amp; chroma sliders (0%–200%)\n• Improved highlight color blending</string>
+    <string name="changelog_v100_title">v1.0.0</string>
+    <string name="changelog_v100_body">• Initial API 102 release with FP capsule alignment, overlap hide, music lockscreen FP, and Fluid Cloud tuning</string>
+    <string name="about_language_title">Language</string>
+    <string name="about_language_summary">Follow system by default, or switch manually</string>
+    <string name="about_dark_mode_title">Dark Mode</string>
+    <string name="about_dark_mode_summary">Follow system, Light, or Dark</string>
+    <string name="dialog_dark_mode_title">Dark Mode</string>
+    <string name="dark_mode_system">Follow System</string>
+    <string name="dark_mode_light">Light Mode</string>
+    <string name="dark_mode_dark">Dark Mode</string>
+    <string name="about_monet_title">Dynamic Accent</string>
+    <string name="about_monet_summary">Use wallpaper accent color (Android 12+)</string>
+    <string name="dialog_language_title">Language</string>
+    <string name="lang_system">Follow System</string>
+    <string name="lang_system_fmt">Follow System (%1$s)</string>
+    <string name="lang_zh_tw">繁體中文</string>
+    <string name="lang_zh_cn">简体中文</string>
+    <string name="lang_en">English</string>
+    <string name="about_restart_ui_title">Restart System UI</string>
+    <string name="about_restart_ui_summary">Apply changes that require restarting System UI</string>
+    <string name="about_debug_mode_title">Fluid Cloud Test Mode</string>
+    <string name="about_debug_mode_summary">Allow sending test Fluid Cloud cards to preview lockscreen, AOD &amp; shade effects</string>
+    <string name="about_debug_tester_title">Send Test Fluid Cloud</string>
+    <string name="about_debug_tester_summary">Send pickup code, progress, timer &amp; regular test cards</string>
+    <string name="dialog_debug_title">Send Test Fluid Cloud</string>
+    <string name="dialog_debug_hint">Enable Fluid Cloud Test Mode with the module active, then tap any item below to send a test card.</string>
+    <string name="btn_debug_post_all">Send All</string>
+    <string name="btn_debug_clear_all">Clear All</string>
+    <string name="debug_item_pickup_dark_title">Pickup Code (Dark)</string>
+    <string name="debug_item_pickup_dark_sub">Standard pickup card &amp; capsule · Test dark mask &amp; media tint</string>
+    <string name="debug_item_pickup_white_title">Pickup Code (White #FFFFFF)</string>
+    <string name="debug_item_pickup_white_sub">White pickup card · Check white text readability</string>
+    <string name="debug_item_pickup_brand_title">Pickup Code (Brand Colors)</string>
+    <string name="debug_item_pickup_brand_sub">Tap to cycle Green / Amber / Red / Blue backgrounds</string>
+    <string name="debug_item_progress_title">Delivery Progress (ProgressStyle)</string>
+    <string name="debug_item_progress_sub" formatted="false">Tap to advance progress 25% → 55% → 85% → 100%</string>
+    <string name="debug_item_ride_title">Ride-Hailing Card</string>
+    <string name="debug_item_ride_sub">Plate number, distance, action button &amp; capsule</string>
+    <string name="debug_item_timer_title">Countdown Timer (Chronometer)</string>
+    <string name="debug_item_timer_sub">10-minute timer · Test live capsule &amp; non-media card</string>
+    <string name="debug_item_bigtext_title">Multi-Line Alert (BigTextStyle)</string>
+    <string name="debug_item_bigtext_sub">Boarding reminder expandable text card</string>
+    <string name="debug_item_metric_title">Metric / Colorized Card</string>
+    <string name="debug_item_metric_sub">System metric style &amp; colorized card test</string>
+    <string name="debug_item_custom_title">Custom Layout (RemoteViews)</string>
+    <string name="debug_item_custom_sub">Test custom XML layout in lockscreen &amp; shade</string>
+    <string name="debug_item_normal_title">Regular Notification (Non-Fluid Cloud)</string>
+    <string name="debug_item_normal_sub">Standard notification · Test AOD glass &amp; border highlight</string>
+    <string name="toast_debug_posted">Test notification sent</string>
+    <string name="toast_debug_cleared">Test notifications cleared</string>
+    <string name="toast_debug_perm_needed">Please grant notification permission first</string>
+    <string name="about_reset_all_title">Reset All Settings</string>
+    <string name="about_reset_all_summary">Restore all options to default values</string>
+    <string name="dialog_reset_all_title">Reset All Settings?</string>
+    <string name="dialog_reset_all_msg">All lockscreen and Fluid Cloud settings will be restored to default.</string>
+    <string name="btn_confirm_reset">Reset All</string>
+
+    <!-- Toasts -->
+    <string name="toast_restarting">Restarting System UI…</string>
+    <string name="toast_restarted">System UI restarted</string>
+    <string name="toast_no_root">Root unavailable, please restart System UI manually</string>
+    <string name="toast_reset_done">Defaults restored</string>
+    <string name="toast_open_link_failed">Unable to open link</string>
+</resources>

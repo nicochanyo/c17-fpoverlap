@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">C17锁屏流体云优化</string>
+    <string name="xposed_description">ColorOS 17 短焦指纹胶囊对齐、音乐锁屏指纹、流体云透明度与高光/遮罩调节</string>
+
+    <!-- Bottom Navigation & Header -->
+    <string name="nav_lockscreen">锁屏</string>
+    <string name="nav_appearance">流体云</string>
+    <string name="nav_about">关于</string>
+
+    <string name="page_title_lockscreen">C17锁屏流体云优化</string>
+    <string name="page_subtitle_lockscreen">短焦指纹 · 音乐锁屏 · 锁屏通知</string>
+    <string name="page_title_appearance">流体云外观</string>
+    <string name="page_subtitle_appearance">透明度 · 模糊 · 高光 · 遮罩</string>
+    <string name="page_title_about">关于模块</string>
+    <string name="page_subtitle_about">运行状态 · 界面设置 · 鸣谢</string>
+
+    <!-- Top Status Card -->
+    <string name="status_title_active">模块已启用</string>
+    <string name="status_title_inactive">模块未启用</string>
+    <string name="status_sub_active">v1.0.6 (1006) · com.android.systemui</string>
+    <string name="status_sub_inactive">请在 LSPosed 勾选「系统界面」并重启</string>
+    <string name="badge_api_102">API 102</string>
+
+    <string name="chip_version">v1.0.6</string>
+    <string name="chip_lsposed">API 102</string>
+
+    <!-- Tab 0: Lockscreen & Fingerprint -->
+    <string name="section_fp_capsule">指纹与胶囊</string>
+    <string name="pref_align_title">胶囊对齐指纹</string>
+    <string name="pref_align_summary">锁屏与 AOD 胶囊下移至指纹位置，修正跳动与上抬</string>
+
+    <string name="sub_capsule_fine">位置与隐藏</string>
+    <string name="pref_hide_fp_title">重叠时隐藏指纹图标</string>
+    <string name="pref_hide_fp_summary">胶囊覆盖时自动隐藏指纹图标，仍可按压解锁</string>
+    <string name="pref_offset_title">垂直位置微调</string>
+    <string name="pref_offset_hint">正数上移，负数下移（-150 ~ +150 px）</string>
+    <string name="btn_zero">归零</string>
+    <string name="btn_minus">−</string>
+    <string name="btn_plus">+</string>
+
+    <string name="section_music_lockscreen">音乐锁屏</string>
+    <string name="pref_immersive_fp_title">音乐锁屏显示指纹</string>
+    <string name="pref_immersive_fp_summary">展开锁屏媒体卡时保留指纹图标与解锁</string>
+
+    <string name="section_aod_notif">锁屏通知</string>
+    <string name="pref_aod_notif_translucent_title">AOD 通知半透明毛玻璃</string>
+    <string name="pref_aod_notif_translucent_summary">全屏 AOD 下移除通知黑底，改为与媒体卡一致的半透明效果</string>
+    <string name="pref_lock_notif_glow_follow_media_title">通知高光跟随媒体</string>
+    <string name="pref_lock_notif_glow_follow_media_summary">锁屏通知边框高光跟随当前音乐封面变色</string>
+
+    <string name="btn_reset_page">恢复默认</string>
+    <string name="btn_restart_ui">重启系统界面</string>
+
+    <!-- Tab 1: Appearance (Fluid Cloud & Dynamic Island) -->
+    <string name="section_preview">实时预览</string>
+    <string name="section_fc_tuning">外观设置</string>
+    <string name="pref_fc_enabled_title">启用外观调节</string>
+    <string name="pref_fc_enabled_summary">自定义顶部展开卡片、锁屏与通知栏流体云样式</string>
+
+    <string name="sub_fc_blur_opacity">透明度与模糊</string>
+    <string name="pref_fc_island_opacity_title">顶部展开卡片不透明度</string>
+    <string name="pref_fc_island_opacity_hint" formatted="false">0% 全透明，100% 默认底色</string>
+    <string name="pref_fc_opacity_title">锁屏流体云不透明度</string>
+    <string name="pref_fc_opacity_hint" formatted="false">0% 全透明，100% 系统默认</string>
+    <string name="pref_fc_blur_title">模糊强度</string>
+    <string name="pref_fc_bottom_glow_title">大媒体卡高光亮度</string>
+    <string name="pref_fc_bottom_glow_hint" formatted="false">0% 默认，最高 200% 加亮</string>
+    <string name="pref_fc_bottom_glow_chroma_title">大媒体卡高光彩度</string>
+    <string name="pref_fc_bottom_glow_chroma_hint" formatted="false">0% 默认，最高 200% 加强色彩</string>
+    <string name="pref_fc_single_glow_title">单行卡片高光亮度</string>
+    <string name="pref_fc_single_glow_hint" formatted="false">0% 默认，最高 200% 加亮</string>
+    <string name="pref_fc_single_glow_chroma_title">单行卡片高光彩度</string>
+    <string name="pref_fc_single_glow_chroma_hint" formatted="false">0% 默认，最高 200% 加强色彩</string>
+    <string name="pref_fc_remove_island_mask_title">移除顶部展开卡片遮罩</string>
+    <string name="pref_fc_remove_island_mask_summary">去除顶部展开卡片的黑色渐变遮罩（开启后该处不显示遮罩变色）</string>
+    <string name="pref_fc_match_card_title">移除锁屏流体云遮罩</string>
+    <string name="pref_fc_match_card_summary">去除锁屏胶囊与卡片的黑色渐变遮罩（开启后该处不显示遮罩变色）</string>
+    <string name="pref_fc_remove_shade_mask_title">移除通知栏流体云遮罩</string>
+    <string name="pref_fc_remove_shade_mask_summary">去除下拉通知栏卡片的黑色渐变遮罩（开启后该处不显示遮罩变色）</string>
+    <string name="pref_fc_mask_follow_media_title">遮罩跟随媒体变色</string>
+    <string name="pref_fc_mask_follow_media_summary">未勾选移除遮罩的区域（顶部展开、锁屏、通知栏）跟随音乐封面变色</string>
+    <string name="pref_fc_mask_brightness_title">遮罩亮度</string>
+    <string name="pref_fc_mask_brightness_hint">调整变色遮罩的明暗程度</string>
+    <string name="pref_fc_mask_chroma_title">遮罩彩度</string>
+    <string name="pref_fc_mask_chroma_hint" formatted="false">0% 为暗灰，100% 为高饱和色彩</string>
+    <string name="pref_fc_mask_strength_title">媒体遮罩浓度</string>
+    <string name="pref_fc_mask_strength_hint" formatted="false">0% 隐藏，100% 默认，最高 200% 加深</string>
+    <string name="pref_fc_non_media_mask_opacity_title">非媒体遮罩浓度</string>
+    <string name="pref_fc_non_media_mask_opacity_hint" formatted="false">调整热点、计时器等卡片遮罩浓度（0% ~ 200%）</string>
+    <string name="pref_fc_non_media_mask_title">非媒体卡片跟随媒体变色</string>
+    <string name="pref_fc_non_media_mask_summary">非媒体卡片的遮罩（需未移除）与高光同步应用音乐封面色</string>
+    <string name="pref_fc_non_media_mask_color_title">自定义非媒体遮罩颜色</string>
+    <string name="pref_fc_non_media_mask_color_summary">点击选择固定遮罩颜色</string>
+    <string name="label_stock_mask">系统默认</string>
+
+    <string name="group_fc_opacity_cards">卡片不透明度</string>
+    <string name="group_fc_opacity_blur">背景模糊</string>
+    <string name="group_fc_highlight_large_media">大媒体卡片</string>
+    <string name="group_fc_highlight_single_line">单行与普通流体云</string>
+    <string name="group_fc_mask_switches">移除黑色遮罩</string>
+    <string name="group_fc_mask_media">媒体遮罩变色</string>
+    <string name="group_fc_mask_non_media">非媒体卡片遮罩</string>
+
+    <string name="menu_fc_opacity_blur_title">透明度与模糊</string>
+    <string name="menu_fc_highlight_title">高光调节</string>
+    <string name="menu_fc_masks_title">遮罩设置</string>
+    <string name="menu_fc_masks_summary">移除黑色渐变遮罩或跟随封面变色</string>
+    <string name="menu_fc_tint_title">卡片底色</string>
+    <string name="summary_fc_opacity_blur_fmt" formatted="false">展开 %d%% · 锁屏 %d%% · 模糊 %d%%</string>
+    <string name="summary_fc_highlight_fmt" formatted="false">大卡 %d%%/%d%% · 单行 %d%%/%d%%</string>
+    <string name="summary_fc_masks_media">跟随媒体变色</string>
+    <string name="summary_fc_masks_removed_fmt" formatted="false">已移除 %d 处遮罩</string>
+    <string name="summary_fc_masks_stock">系统默认</string>
+
+    <string name="sub_fc_tint">卡片底色</string>
+    <string name="pref_fc_follow_stock_title">使用系统默认底色</string>
+    <string name="pref_fc_follow_stock_summary">保持原本底色，仅调整透明度与模糊</string>
+    <string name="pref_fc_color_title">自定义卡片底色</string>
+    <string name="pref_fc_color_summary">点击选色或输入 HEX 色码</string>
+    <string name="label_stock_tint">系统默认</string>
+
+    <!-- Color Picker Dialog -->
+    <string name="dialog_color_title">自定义卡片底色</string>
+    <string name="label_color_alpha">透明度</string>
+    <string name="label_color_red">红 (R)</string>
+    <string name="label_color_green">绿 (G)</string>
+    <string name="label_color_blue">蓝 (B)</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_confirm">确定</string>
+    <string name="btn_apply_color">应用颜色</string>
+    <string name="dialog_input_range_fmt" formatted="false">范围：%d ~ %d %s</string>
+
+    <!-- Tab 2: About -->
+    <string name="about_hero_desc">支持短焦指纹胶囊对齐与自动隐藏、音乐锁屏指纹，以及流体云透明度、模糊、高光与遮罩调节。</string>
+    <string name="about_free_notice">本模块免费提供，严禁倒卖！</string>
+    <string name="section_environment">运行环境</string>
+    <string name="about_sys_ver_title">系统版本</string>
+    <string name="about_device_title">设备型号</string>
+    <string name="about_env_channel_title">设置同步方式</string>
+    <string name="channel_xsp">LSPosed RemotePreferences</string>
+    <string name="channel_root_file">Root 共享配置文件</string>
+    <string name="channel_private_warn">仅本地存储（未启用）</string>
+    <string name="about_scope_title">模块作用域</string>
+    <string name="about_scope_value">com.android.systemui</string>
+    <string name="about_conflict_title">兼容性提醒</string>
+    <string name="about_conflict_summary">请勿与其他流体云调节或指纹重叠模块同时启用，以免冲突。</string>
+
+    <string name="section_credits">作者与鸣谢</string>
+    <string name="about_orig_author_title">原作者：酷安 @白无爱</string>
+    <string name="about_orig_author_summary">短焦指纹锁屏重叠原作者 · 点击前往酷安</string>
+    <string name="about_fc_ref_title">流体云原作者：酷安 @天伞桜</string>
+    <string name="about_fc_ref_summary">流体云调节 (com.sakur.fluidcloud) · 点击前往酷安</string>
+    <string name="about_mod_author_title">二改：o永夜o (@nicochanyo)</string>
+    <string name="about_mod_author_summary">指纹自动隐藏、音乐锁屏指纹、流体云高光与遮罩调节 · 点击前往酷安</string>
+
+    <string name="section_system_ops">系统操作</string>
+    <string name="about_changelog_title">更新日志</string>
+    <string name="about_changelog_summary">查看各版本更新内容</string>
+    <string name="dialog_changelog_title">更新日志</string>
+    <string name="btn_close">关闭</string>
+    <string name="changelog_v106_title">v1.0.6</string>
+    <string name="changelog_v106_body" formatted="false">• 修复关闭系统「流光轮廓（高光）」时，遮罩跟随媒体变色失效的问题\n• 新增界面语言「跟随系统」，默认按系统语言自动切换繁中、简中或英文\n• 精简全应用设置项与说明用词</string>
+    <string name="changelog_v105_title">v1.0.5</string>
+    <string name="changelog_v105_body" formatted="false">• 大媒体卡与单行流体云的高光亮度/彩度改为分开调整（0%~200%）\n• 新增「通知高光跟随媒体」开关\n• 修复锁屏堆叠流体云展开时偶发掉色与闪动\n• 修复切歌后锁屏非媒体卡停留在上一首颜色，以及解锁进通知栏的显示问题\n• 修复白底取餐码卡片背景过白导致白字难以辨识\n• 新增流体云测试模式与测试卡片发送器</string>
+    <string name="changelog_v104_title">v1.0.4</string>
+    <string name="changelog_v104_body" formatted="false">• 统一锁屏媒体卡与顶部展开卡片在相同不透明度下的亮度表现\n• 遮罩浓度与卡片底色透明度分离，互不影响\n• 新增「媒体遮罩浓度」、「非媒体遮罩浓度」拉杆与「非媒体卡片跟随媒体变色」\n• 全屏 AOD 下保持通透毛玻璃，并新增「AOD 通知半透明毛玻璃」开关\n• 改善锁屏进入 AOD 时媒体卡底色与高光的过渡动画\n• 外观子菜单改为分组卡片排版，并在关于页新增更新日志</string>
+    <string name="changelog_v103_title">v1.0.3</string>
+    <string name="changelog_v103_body" formatted="false">• 外观设置整合为四个折叠子菜单\n• 新增媒体变色遮罩的亮度与彩度拉杆\n• 修复锁屏流体云不透明度未应用至遮罩的问题</string>
+    <string name="changelog_v102_title">v1.0.2</string>
+    <string name="changelog_v102_body" formatted="false">• 顶部展开、锁屏与通知栏黑色遮罩改为独立开关\n• 新增遮罩跟随音乐封面变色</string>
+    <string name="changelog_v101_title">v1.0.1</string>
+    <string name="changelog_v101_body" formatted="false">• 高光拆分为亮度与彩度两项独立拉杆（0%~200%）\n• 改善锁屏与展开卡片的高光混色效果</string>
+    <string name="changelog_v100_title">v1.0.0</string>
+    <string name="changelog_v100_body">• 整合短焦指纹胶囊对齐、重叠隐藏、音乐锁屏指纹与流体云外观调节（API 102）</string>
+    <string name="about_language_title">界面语言</string>
+    <string name="about_language_summary">默认跟随系统，也可手动切换语言</string>
+    <string name="about_dark_mode_title">暗色模式</string>
+    <string name="about_dark_mode_summary">跟随系统、浅色或深色</string>
+    <string name="dialog_dark_mode_title">暗色模式</string>
+    <string name="dark_mode_system">跟随系统</string>
+    <string name="dark_mode_light">浅色模式</string>
+    <string name="dark_mode_dark">深色模式</string>
+    <string name="about_monet_title">动态取色</string>
+    <string name="about_monet_summary">强调色跟随壁纸主题色（Android 12+）</string>
+    <string name="dialog_language_title">界面语言</string>
+    <string name="lang_system">跟随系统</string>
+    <string name="lang_system_fmt">跟随系统（%1$s）</string>
+    <string name="lang_zh_tw">繁體中文</string>
+    <string name="lang_zh_cn">简体中文</string>
+    <string name="lang_en">English</string>
+    <string name="about_restart_ui_title">重启系统界面</string>
+    <string name="about_restart_ui_summary">立即应用需重启系统界面的修改</string>
+    <string name="about_debug_mode_title">流体云测试模式</string>
+    <string name="about_debug_mode_summary">允许发送测试用流体云通知，方便预览锁屏、AOD 与通知栏效果</string>
+    <string name="about_debug_tester_title">发送测试流体云</string>
+    <string name="about_debug_tester_summary">发送取餐码、进度、计时器与普通通知等测试卡片</string>
+    <string name="dialog_debug_title">发送测试流体云</string>
+    <string name="dialog_debug_hint">开启「流体云测试模式」并启用模块后，点击下方项目即可发送对应的流体云通知。</string>
+    <string name="btn_debug_post_all">发送全部</string>
+    <string name="btn_debug_clear_all">清除全部</string>
+    <string name="debug_item_pickup_dark_title">取餐码（默认深色底）</string>
+    <string name="debug_item_pickup_dark_sub">标准取餐码卡片与胶囊 · 测试深色遮罩与封面变色</string>
+    <string name="debug_item_pickup_white_title">取餐码（纯白底 #FFFFFF）</string>
+    <string name="debug_item_pickup_white_sub">白底取餐码配置 · 检查白字是否清晰可读</string>
+    <string name="debug_item_pickup_brand_title">取餐码（品牌色底）</string>
+    <string name="debug_item_pickup_brand_sub">每次点击轮换绿/琥珀/红/蓝品牌底色</string>
+    <string name="debug_item_progress_title">外卖进度（ProgressStyle）</string>
+    <string name="debug_item_progress_sub" formatted="false">每次点击推进进度 25% → 55% → 85% → 100%</string>
+    <string name="debug_item_ride_title">网约车行程卡片</string>
+    <string name="debug_item_ride_sub">车牌、距离信息、按钮与胶囊标签</string>
+    <string name="debug_item_timer_title">倒数计时器（Chronometer）</string>
+    <string name="debug_item_timer_sub">10 分钟倒数 · 测试计时胶囊与非媒体卡片</string>
+    <string name="debug_item_bigtext_title">多行文字提醒（BigTextStyle）</string>
+    <string name="debug_item_bigtext_sub">航班登机提醒多行展开卡片</string>
+    <string name="debug_item_metric_title">指标/彩色卡片（MetricStyle）</string>
+    <string name="debug_item_metric_sub">系统指标样式与彩色卡片测试</string>
+    <string name="debug_item_custom_title">自定义布局（RemoteViews）</string>
+    <string name="debug_item_custom_sub">测试自定义 XML 布局在锁屏与通知栏的显示效果</string>
+    <string name="debug_item_normal_title">普通锁屏通知（非流体云）</string>
+    <string name="debug_item_normal_sub">普通通知卡片 · 测试 AOD 通知半透明与边框高光</string>
+    <string name="toast_debug_posted">已发送测试通知</string>
+    <string name="toast_debug_cleared">已清除全部测试通知</string>
+    <string name="toast_debug_perm_needed">请先授予通知权限</string>
+    <string name="about_reset_all_title">重置所有设置</string>
+    <string name="about_reset_all_summary">将全部选项恢复为默认值</string>
+    <string name="dialog_reset_all_title">重置所有设置？</string>
+    <string name="dialog_reset_all_msg">所有锁屏与流体云设置将恢复为默认值。</string>
+    <string name="btn_confirm_reset">全部重置</string>
+
+    <!-- Toasts -->
+    <string name="toast_restarting">正在重启系统界面…</string>
+    <string name="toast_restarted">系统界面已重启</string>
+    <string name="toast_no_root">未获取 Root 权限，请手动重启系统界面</string>
+    <string name="toast_reset_done">已恢复默认设置</string>
+    <string name="toast_open_link_failed">无法打开链接</string>
+</resources>
