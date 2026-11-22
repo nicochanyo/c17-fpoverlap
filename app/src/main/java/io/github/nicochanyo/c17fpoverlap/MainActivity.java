@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -23,6 +24,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Html;
 import android.text.InputFilter;
 import android.text.InputType;
 import android.util.TypedValue;
@@ -50,11 +52,20 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import io.github.libxposed.service.XposedProvider;
 
@@ -62,6 +73,9 @@ public class MainActivity extends Activity {
     private static final String STATE_TAB = "active_tab";
     private static final String COOLAPK_DEEP_PREFIX = "coolmarket://u/";
     private static final String COOLAPK_WEB_PREFIX = "https://www.coolapk.com/u/";
+    private static final String LSPOSED_REPO_JSON_URL = "https://modules.lsposed.org/module/io.github.nicochanyo.c17fpoverlap.json";
+    private static final String LSPOSED_REPO_PAGE_URL = "https://modules.lsposed.org/module/io.github.nicochanyo.c17fpoverlap/";
+    private static final String GITHUB_LATEST_API_URL = "https://api.github.com/repos/Xposed-Modules-Repo/io.github.nicochanyo.c17fpoverlap/releases/latest";
     private static final String UID_ORIG_AUTHOR = "40697326";
     private static final String UID_FC_AUTHOR = "540690";
     private static final String UID_MOD_AUTHOR = "25380289";
@@ -197,6 +211,7 @@ public class MainActivity extends Activity {
     private TextView tvSysVersion;
     private TextView tvDeviceModel;
     private TextView tvAboutChannel;
+    private TextView tvAboutUpdateChip;
     private TextView tvAboutLanguageVal;
     private TextView tvAboutDarkModeVal;
     private Switch swAboutMonet;
@@ -204,6 +219,9 @@ public class MainActivity extends Activity {
     private View dividerAboutDebugTester;
     private View rowAboutDebugTester;
     private Runnable pendingDebugAction;
+    private boolean updateCheckRunning;
+    private static RepoReleaseInfo sCachedLatestRelease;
+    private static boolean sSilentUpdateCheckDone;
     private static final int REQ_POST_NOTIF = 1001;
 
     @Override
@@ -245,6 +263,12 @@ public class MainActivity extends Activity {
         syncUiState();
         DynamicThemeHelper.applyAccent(findViewById(android.R.id.content), this);
         switchTab(activeTab, false);
+        if (sCachedLatestRelease != null) {
+            applyUpdateChipState(sCachedLatestRelease);
+        } else if (!sSilentUpdateCheckDone) {
+            sSilentUpdateCheckDone = true;
+            checkUpdateFromLsposedRepo(false);
+        }
         XposedProvider.setConnectionListener(new Runnable() {
             @Override
             public void run() {
@@ -1555,6 +1579,7 @@ public class MainActivity extends Activity {
         tvSysVersion = findViewById(R.id.tvSysVersion);
         tvDeviceModel = findViewById(R.id.tvDeviceModel);
         tvAboutChannel = findViewById(R.id.tvAboutChannel);
+        tvAboutUpdateChip = findViewById(R.id.tvAboutUpdateChip);
         tvAboutLanguageVal = findViewById(R.id.tvAboutLanguageVal);
         tvAboutDarkModeVal = findViewById(R.id.tvAboutDarkModeVal);
 
@@ -1598,6 +1623,12 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) {
                 showChangelogDialog();
+            }
+        });
+        findViewById(R.id.rowAboutCheckUpdate).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkUpdateFromLsposedRepo(true);
             }
         });
         findViewById(R.id.rowAboutLanguage).setOnClickListener(new View.OnClickListener() {
@@ -2042,6 +2073,496 @@ public class MainActivity extends Activity {
             cardLp.bottomMargin = dp(10);
         }
         parent.addView(card, cardLp);
+    }
+
+    private static final class RepoReleaseInfo {
+        int versionCode;
+        String versionName;
+        String changelogRaw;
+        boolean isHtmlChangelog;
+        String downloadUrl;
+        String repoPageUrl;
+    }
+
+    private int getInstalledVersionCode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (Build.VERSION.SDK_INT >= 28) {
+                return (int) pi.getLongVersionCode();
+            }
+            //noinspection deprecation
+            return pi.versionCode;
+        } catch (Throwable ignored) {
+            return 1006;
+        }
+    }
+
+    private String getInstalledVersionName() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (pi.versionName != null && !pi.versionName.trim().isEmpty()) {
+                return pi.versionName.trim();
+            }
+        } catch (Throwable ignored) {
+        }
+        return "1.0.6";
+    }
+
+    private static String formatVerLabel(String ver) {
+        if (ver == null || ver.trim().isEmpty()) {
+            return "v1.0.6";
+        }
+        String t = ver.trim();
+        if (t.startsWith("v") || t.startsWith("V")) {
+            return "v" + t.substring(1);
+        }
+        return "v" + t;
+    }
+
+    private static int compareVersionNames(String a, String b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+        String ca = a.trim().replaceFirst("^[vV]", "");
+        String cb = b.trim().replaceFirst("^[vV]", "");
+        String[] pa = ca.split("[^0-9]+");
+        String[] pb = cb.split("[^0-9]+");
+        int len = Math.max(pa.length, pb.length);
+        for (int i = 0; i < len; i++) {
+            int va = (i < pa.length && !pa[i].isEmpty()) ? ConfigStore.parseIntSafe(pa[i], 0) : 0;
+            int vb = (i < pb.length && !pb[i].isEmpty()) ? ConfigStore.parseIntSafe(pb[i], 0) : 0;
+            if (va != vb) {
+                return va > vb ? 1 : -1;
+            }
+        }
+        return 0;
+    }
+
+    private boolean isNewerRelease(RepoReleaseInfo info) {
+        if (info == null) {
+            return false;
+        }
+        int curCode = getInstalledVersionCode();
+        if (info.versionCode > 0 && curCode > 0) {
+            return info.versionCode > curCode;
+        }
+        return compareVersionNames(info.versionName, getInstalledVersionName()) > 0;
+    }
+
+    private void applyUpdateChipState(RepoReleaseInfo info) {
+        if (tvAboutUpdateChip == null || info == null) {
+            return;
+        }
+        tvAboutUpdateChip.setVisibility(View.VISIBLE);
+        if (isNewerRelease(info)) {
+            tvAboutUpdateChip.setText(getString(
+                    R.string.chip_update_available_fmt, formatVerLabel(info.versionName)));
+        } else {
+            tvAboutUpdateChip.setText(R.string.chip_update_latest);
+        }
+        DynamicThemeHelper.applyAccent(tvAboutUpdateChip, this);
+    }
+
+    private void checkUpdateFromLsposedRepo(final boolean manual) {
+        if (updateCheckRunning) {
+            return;
+        }
+        updateCheckRunning = true;
+        if (tvAboutUpdateChip != null) {
+            tvAboutUpdateChip.setVisibility(View.VISIBLE);
+            tvAboutUpdateChip.setText(R.string.chip_update_checking);
+            DynamicThemeHelper.applyAccent(tvAboutUpdateChip, this);
+        }
+        if (manual) {
+            Toast.makeText(this, R.string.toast_update_checking, Toast.LENGTH_SHORT).show();
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final RepoReleaseInfo info = fetchLatestReleaseFromRepo();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        updateCheckRunning = false;
+                        if (isFinishing() || isDestroyed()) {
+                            return;
+                        }
+                        if (info == null) {
+                            if (sCachedLatestRelease != null) {
+                                applyUpdateChipState(sCachedLatestRelease);
+                            } else if (tvAboutUpdateChip != null) {
+                                tvAboutUpdateChip.setVisibility(View.GONE);
+                            }
+                            if (manual) {
+                                Toast.makeText(MainActivity.this, R.string.toast_update_failed, Toast.LENGTH_SHORT).show();
+                            }
+                            return;
+                        }
+                        sCachedLatestRelease = info;
+                        applyUpdateChipState(info);
+                        if (manual) {
+                            showUpdateResultDialog(info);
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private static RepoReleaseInfo fetchLatestReleaseFromRepo() {
+        RepoReleaseInfo fromLsp = fetchFromLsposedJson();
+        if (fromLsp != null) {
+            return fromLsp;
+        }
+        return fetchFromGitHubApiFallback();
+    }
+
+    private static String httpGetText(String urlStr) throws Exception {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(urlStr).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(7000);
+            conn.setReadTimeout(9000);
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("User-Agent", "C17FpOverlap-UpdateChecker/1.0");
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException("HTTP " + code);
+            }
+            InputStream in = conn.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append('\n');
+            }
+            reader.close();
+            return sb.toString();
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private static void parseTagIntoInfo(String tagName, String releaseName, RepoReleaseInfo out) {
+        String tag = tagName != null ? tagName.trim() : "";
+        String name = releaseName != null ? releaseName.trim() : "";
+        int dash = tag.indexOf('-');
+        if (dash > 0) {
+            int code = ConfigStore.parseIntSafe(tag.substring(0, dash).trim(), 0);
+            String ver = tag.substring(dash + 1).trim();
+            out.versionCode = code;
+            out.versionName = !name.isEmpty() ? name : ver;
+        } else {
+            out.versionCode = 0;
+            out.versionName = !name.isEmpty() ? name : tag;
+        }
+        if (out.versionName == null || out.versionName.isEmpty()) {
+            out.versionName = "1.0.6";
+        }
+    }
+
+    private static RepoReleaseInfo fetchFromLsposedJson() {
+        try {
+            String raw = httpGetText(LSPOSED_REPO_JSON_URL);
+            JSONObject root = new JSONObject(raw);
+            JSONArray releases = root.optJSONArray("releases");
+            if (releases == null || releases.length() == 0) {
+                return null;
+            }
+            JSONObject chosen = null;
+            for (int i = 0; i < releases.length(); i++) {
+                JSONObject r = releases.optJSONObject(i);
+                if (r != null && !r.optBoolean("isDraft", false) && !r.optBoolean("isPrerelease", false)) {
+                    chosen = r;
+                    break;
+                }
+            }
+            if (chosen == null) {
+                chosen = releases.optJSONObject(0);
+            }
+            if (chosen == null) {
+                return null;
+            }
+            RepoReleaseInfo info = new RepoReleaseInfo();
+            parseTagIntoInfo(
+                    chosen.optString("tagName", root.optString("latestRelease", "")),
+                    chosen.optString("name", ""),
+                    info);
+            info.changelogRaw = chosen.optString("descriptionHTML", "");
+            info.isHtmlChangelog = true;
+            info.repoPageUrl = LSPOSED_REPO_PAGE_URL;
+            JSONArray assets = chosen.optJSONArray("releaseAssets");
+            if (assets != null && assets.length() > 0) {
+                for (int i = 0; i < assets.length(); i++) {
+                    JSONObject a = assets.optJSONObject(i);
+                    if (a == null) continue;
+                    String dl = a.optString("downloadUrl", "");
+                    String origDl = a.optString("originalDownloadUrl", "");
+                    String candidate = !dl.isEmpty() ? dl : origDl;
+                    if (!candidate.isEmpty()) {
+                        info.downloadUrl = candidate;
+                        if (a.optString("name", "").toLowerCase(Locale.ROOT).endsWith(".apk")) {
+                            break;
+                        }
+                    }
+                }
+            }
+            return info;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static RepoReleaseInfo fetchFromGitHubApiFallback() {
+        try {
+            String raw = httpGetText(GITHUB_LATEST_API_URL);
+            JSONObject rel = new JSONObject(raw);
+            RepoReleaseInfo info = new RepoReleaseInfo();
+            parseTagIntoInfo(rel.optString("tag_name", ""), rel.optString("name", ""), info);
+            info.changelogRaw = rel.optString("body", "");
+            info.isHtmlChangelog = false;
+            info.repoPageUrl = LSPOSED_REPO_PAGE_URL;
+            JSONArray assets = rel.optJSONArray("assets");
+            if (assets != null && assets.length() > 0) {
+                for (int i = 0; i < assets.length(); i++) {
+                    JSONObject a = assets.optJSONObject(i);
+                    if (a == null) continue;
+                    String dl = a.optString("browser_download_url", "");
+                    if (!dl.isEmpty()) {
+                        info.downloadUrl = dl;
+                        if (a.optString("name", "").toLowerCase(Locale.ROOT).endsWith(".apk")) {
+                            break;
+                        }
+                    }
+                }
+            }
+            return info;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private String formatLocalizedChangelog(RepoReleaseInfo info) {
+        if (info == null || info.changelogRaw == null || info.changelogRaw.trim().isEmpty()) {
+            return "";
+        }
+        String text = info.changelogRaw;
+        if (info.isHtmlChangelog) {
+            String prepped = text
+                    .replaceAll("(?i)<h[1-6][^>]*>", "\n### ")
+                    .replaceAll("(?i)</h[1-6]>", "\n")
+                    .replaceAll("(?i)<li[^>]*>", "\n• ")
+                    .replaceAll("(?i)</li>", "")
+                    .replaceAll("(?i)</p>", "\n")
+                    .replaceAll("(?i)<br\\s*/?>", "\n");
+            text = Html.fromHtml(prepped, Html.FROM_HTML_MODE_LEGACY).toString();
+        } else {
+            text = text.replace("\r\n", "\n");
+        }
+
+        String lang = ConfigStore.getEffectiveAppLanguage(this);
+        String targetMarker;
+        if (ConfigStore.LANG_ZH_CN.equals(lang)) {
+            targetMarker = "简体中文";
+        } else if (ConfigStore.LANG_EN.equals(lang)) {
+            targetMarker = "English";
+        } else {
+            targetMarker = "繁體中文";
+        }
+
+        String[] lines = text.split("\n");
+        StringBuilder section = new StringBuilder();
+        StringBuilder allCleaned = new StringBuilder();
+        boolean inTarget = false;
+        boolean foundTarget = false;
+
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (line.startsWith("###")) {
+                String headerTitle = line.replaceFirst("^#+\\s*", "").trim();
+                if (headerTitle.equalsIgnoreCase(targetMarker)) {
+                    inTarget = true;
+                    foundTarget = true;
+                } else if (inTarget) {
+                    break;
+                }
+                continue;
+            }
+            if (line.startsWith("- ") || line.startsWith("* ")) {
+                line = "• " + line.substring(2).trim();
+            }
+            if (inTarget) {
+                if (section.length() > 0) section.append('\n');
+                section.append(line);
+            }
+            if (allCleaned.length() > 0) allCleaned.append('\n');
+            allCleaned.append(line);
+        }
+
+        String chosen = (foundTarget && section.length() > 0) ? section.toString() : allCleaned.toString();
+        return chosen.trim();
+    }
+
+    private void showUpdateResultDialog(final RepoReleaseInfo info) {
+        final boolean hasUpdate = isNewerRelease(info);
+        final String curVerLabel = formatVerLabel(getInstalledVersionName());
+        final String latestVerLabel = formatVerLabel(info.versionName);
+
+        final Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundResource(R.drawable.bg_coui_card);
+        root.setPadding(dp(20), dp(20), dp(20), dp(18));
+
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText(hasUpdate
+                ? getString(R.string.dialog_update_available_title_fmt, latestVerLabel)
+                : getString(R.string.dialog_update_latest_title));
+        tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f);
+        tvTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tvTitle.setTextColor(ConfigStore.resolveThemeColor(this, R.attr.couiTextPrimary, R.color.coui_text_primary));
+        root.addView(tvTitle);
+
+        TextView tvSub = new TextView(this);
+        tvSub.setText(hasUpdate
+                ? getString(R.string.dialog_update_ver_compare_fmt, curVerLabel, latestVerLabel)
+                : getString(R.string.dialog_update_latest_msg_fmt, curVerLabel, latestVerLabel));
+        tvSub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        tvSub.setLineSpacing(0f, 1.25f);
+        tvSub.setTextColor(ConfigStore.resolveThemeColor(this, R.attr.couiTextSecondary, R.color.coui_text_secondary));
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.topMargin = dp(6);
+        root.addView(tvSub, subLp);
+
+        String changelog = formatLocalizedChangelog(info);
+        if (!changelog.isEmpty()) {
+            ScrollView scroll = new ScrollView(this);
+            scroll.setVerticalScrollBarEnabled(false);
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setBackgroundResource(R.drawable.bg_coui_subcard);
+            card.setPadding(dp(14), dp(12), dp(14), dp(12));
+
+            TextView badge = new TextView(this);
+            badge.setText(latestVerLabel);
+            badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+            badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            badge.setTextColor(DynamicThemeHelper.getAccent(this));
+            badge.setBackgroundResource(R.drawable.bg_coui_chip);
+            badge.setTag("accent_chip");
+            badge.setPadding(dp(9), dp(3), dp(9), dp(3));
+            LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            card.addView(badge, badgeLp);
+
+            TextView body = new TextView(this);
+            body.setText(changelog);
+            body.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+            body.setLineSpacing(0f, 1.32f);
+            body.setTextColor(ConfigStore.resolveThemeColor(this, R.attr.couiTextSecondary, R.color.coui_text_secondary));
+            LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            bodyLp.topMargin = dp(8);
+            card.addView(body, bodyLp);
+
+            scroll.addView(card);
+            LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            scrollLp.topMargin = dp(14);
+            root.addView(scroll, scrollLp);
+        }
+
+        if (hasUpdate && info.downloadUrl != null && !info.downloadUrl.isEmpty()) {
+            Button btnDownload = new Button(this);
+            btnDownload.setText(R.string.btn_update_download);
+            btnDownload.setAllCaps(false);
+            btnDownload.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+            btnDownload.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            btnDownload.setTextColor(DynamicThemeHelper.getOnAccent(this));
+            btnDownload.setBackgroundResource(R.drawable.bg_coui_btn_primary);
+            btnDownload.setStateListAnimator(null);
+            btnDownload.setTag("accent_btn");
+            btnDownload.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dialog.dismiss();
+                    if (!tryStartView(info.downloadUrl)) {
+                        Toast.makeText(MainActivity.this, R.string.toast_open_link_failed, Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+            LinearLayout.LayoutParams dlLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+            dlLp.topMargin = dp(16);
+            root.addView(btnDownload, dlLp);
+        }
+
+        Button btnRepo = new Button(this);
+        btnRepo.setText(R.string.btn_update_open_repo);
+        btnRepo.setAllCaps(false);
+        btnRepo.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        btnRepo.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        btnRepo.setTextColor(ConfigStore.resolveThemeColor(this, R.attr.couiTextPrimary, R.color.coui_text_primary));
+        btnRepo.setBackgroundResource(R.drawable.bg_coui_btn_secondary);
+        btnRepo.setStateListAnimator(null);
+        btnRepo.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dialog.dismiss();
+                String targetUrl = (info.repoPageUrl != null && !info.repoPageUrl.isEmpty())
+                        ? info.repoPageUrl : LSPOSED_REPO_PAGE_URL;
+                if (!tryStartView(targetUrl)) {
+                    Toast.makeText(MainActivity.this, R.string.toast_open_link_failed, Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        LinearLayout.LayoutParams repoLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        repoLp.topMargin = dp(hasUpdate ? 10 : 16);
+        root.addView(btnRepo, repoLp);
+
+        Button btnClose = new Button(this);
+        btnClose.setText(R.string.btn_close);
+        btnClose.setAllCaps(false);
+        btnClose.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+        btnClose.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        if (hasUpdate) {
+            btnClose.setTextColor(ConfigStore.resolveThemeColor(this, R.attr.couiTextSecondary, R.color.coui_text_secondary));
+            btnClose.setBackgroundResource(R.drawable.bg_coui_btn_secondary);
+        } else {
+            btnClose.setTextColor(DynamicThemeHelper.getOnAccent(this));
+            btnClose.setBackgroundResource(R.drawable.bg_coui_btn_primary);
+            btnClose.setTag("accent_btn");
+        }
+        btnClose.setStateListAnimator(null);
+        btnClose.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dialog.dismiss();
+            }
+        });
+        LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+        closeLp.topMargin = dp(10);
+        root.addView(btnClose, closeLp);
+
+        DynamicThemeHelper.applyAccent(root, this);
+        dialog.setContentView(root);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int width = Math.round(getResources().getDisplayMetrics().widthPixels * 0.90f);
+            dialog.getWindow().setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
     }
 
     private void runWithNotifPermission(Runnable action) {
