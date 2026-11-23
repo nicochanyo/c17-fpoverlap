@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">模組已啟用</string>
     <string name="status_title_inactive">模組未啟用</string>
-    <string name="status_sub_active">v1.0.8 (1008) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.0 (1100) · com.android.systemui</string>
     <string name="status_sub_inactive">請在 LSPosed 勾選「系統介面」並重啟</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.0.8</string>
+    <string name="chip_version">v1.1.0</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -63,6 +63,8 @@
     <string name="pref_fc_island_opacity_hint" formatted="false">0% 全透明，100% 預設底色</string>
     <string name="pref_fc_opacity_title">鎖屏流體雲不透明度</string>
     <string name="pref_fc_opacity_hint" formatted="false">0% 全透明，100% 系統預設</string>
+    <string name="pref_fc_immersive_opacity_title">音樂鎖屏底色不透明度</string>
+    <string name="pref_fc_immersive_opacity_hint" formatted="false">0% 全透明，100% 系統預設</string>
     <string name="pref_fc_blur_title">模糊強度</string>
     <string name="pref_fc_bottom_glow_title">大媒體卡高光亮度</string>
     <string name="pref_fc_bottom_glow_hint" formatted="false">0% 預設，最高 200% 加亮</string>
@@ -84,15 +86,26 @@
     <string name="pref_fc_mask_brightness_hint">調整變色遮罩的明暗程度</string>
     <string name="pref_fc_mask_chroma_title">遮罩彩度</string>
     <string name="pref_fc_mask_chroma_hint" formatted="false">0% 為暗灰，100% 為高飽和色彩</string>
-    <string name="pref_fc_mask_strength_title">媒體遮罩濃度</string>
+    <string name="pref_fc_mask_strength_title">媒體遮罩透明度</string>
     <string name="pref_fc_mask_strength_hint" formatted="false">0% 隱藏，100% 預設，最高 200% 加深</string>
-    <string name="pref_fc_non_media_mask_opacity_title">非媒體遮罩濃度</string>
-    <string name="pref_fc_non_media_mask_opacity_hint" formatted="false">調整熱點、計時器等卡片遮罩濃度（0% ~ 200%）</string>
+    <string name="pref_fc_non_media_mask_opacity_title">非媒體遮罩透明度（關閉變色）</string>
+    <string name="pref_fc_non_media_mask_opacity_hint" formatted="false">未開啟跟隨媒體變色時的遮罩透明度（0% ~ 200%）</string>
+    <string name="pref_fc_non_media_follow_mask_opacity_title">非媒體遮罩透明度（跟隨變色）</string>
+    <string name="pref_fc_non_media_follow_mask_opacity_hint" formatted="false">開啟跟隨媒體變色時的遮罩透明度（0% ~ 200%）</string>
     <string name="pref_fc_non_media_mask_title">非媒體卡片跟隨媒體變色</string>
     <string name="pref_fc_non_media_mask_summary">非媒體卡片的遮罩（需未移除）與高光同步套用音樂封面色</string>
     <string name="pref_fc_non_media_mask_color_title">自訂非媒體遮罩顏色</string>
     <string name="pref_fc_non_media_mask_color_summary">點擊選擇固定遮罩顏色</string>
     <string name="label_stock_mask">系統預設</string>
+    <string name="group_fc_mask_gradient">漸變遮罩參數（全遮罩共用）</string>
+    <string name="pref_fc_mask_grad_start_title">漸變起點</string>
+    <string name="pref_fc_mask_grad_start_hint" formatted="false">0% ~ 90%，預設 0%（至少低於終點 10%）</string>
+    <string name="pref_fc_mask_grad_end_title">漸變終點</string>
+    <string name="pref_fc_mask_grad_end_hint" formatted="false">10% ~ 100%，預設 80%（至少高於起點 10%）</string>
+    <string name="pref_fc_mask_grad_mid_title">漸變中線</string>
+    <string name="pref_fc_mask_grad_mid_hint" formatted="false">15% ~ 85%，預設 50%</string>
+    <string name="pref_fc_mask_grad_strength_title">漸變強度</string>
+    <string name="pref_fc_mask_grad_strength_hint" formatted="false">0% ~ 200%，預設 100%</string>
 
     <string name="group_fc_opacity_cards">卡片不透明度</string>
     <string name="group_fc_opacity_blur">背景模糊</string>
@@ -107,7 +120,7 @@
     <string name="menu_fc_masks_title">遮罩設定</string>
     <string name="menu_fc_masks_summary">移除黑色漸變遮罩或跟隨封面變色</string>
     <string name="menu_fc_tint_title">卡片底色</string>
-    <string name="summary_fc_opacity_blur_fmt" formatted="false">展開 %d%% · 鎖屏 %d%% · 模糊 %d%%</string>
+    <string name="summary_fc_opacity_blur_fmt" formatted="false">展開 %d%% · 鎖屏 %d%% · 音樂 %d%% · 模糊 %d%%</string>
     <string name="summary_fc_highlight_fmt" formatted="false">大卡 %d%%/%d%% · 單行 %d%%/%d%%</string>
     <string name="summary_fc_masks_media">跟隨媒體變色</string>
     <string name="summary_fc_masks_removed_fmt" formatted="false">已移除 %d 處遮罩</string>
@@ -173,6 +186,10 @@
     <string name="btn_update_open_repo">開啟倉庫頁面</string>
     <string name="dialog_changelog_title">更新日誌</string>
     <string name="btn_close">關閉</string>
+    <string name="changelog_v110_title">v1.1.0</string>
+    <string name="changelog_v110_body" formatted="false">• 修復鎖屏媒體卡展開進入音樂鎖屏時遮罩瞬間消失的問題，改為隨展開進度平滑淡出\n• 音樂鎖屏底色不透明度拆分為獨立調節（0% ~ 100%）\n• 漸變遮罩改為 C2 連續平滑曲線並啟用抖動，消除中線斷層與色帶，並加入起點/終點/中線聯動限位\n• 修正僅在音樂播放器內播放（頂部未顯示媒體膠囊/卡片）時，頂部與通知列誤跟隨媒體變色的問題\n• 優化高頻繪製快取與設定重載節流，消除 v1.0.9 卡頓與掉幀</string>
+    <string name="changelog_v109_title">v1.0.9</string>
+    <string name="changelog_v109_body" formatted="false">• 非媒體遮罩透明度拆分為「關閉變色」與「跟隨變色」兩組獨立調節（0% ~ 200%）\n• 統一遮罩調節項命名為「透明度」\n• 新增全遮罩共用的漸變遮罩模板參數（漸變起點、漸變終點、漸變中線、漸變強度）</string>
     <string name="changelog_v108_title">v1.0.8</string>
     <string name="changelog_v108_body" formatted="false">• 升級 ColorOS 17 介面與動效：支援大標題滑動收合、頂部漸層模糊與列表彈性回彈\n• 重構選單與彈窗為懸浮底部卡片、置中彈窗與錨點選單，並精簡列表圖示\n• 修復檢查更新遠端日誌的換行、Markdown 標題與 Unicode 字元排版問題</string>
     <string name="changelog_v107_title">v1.0.7</string>

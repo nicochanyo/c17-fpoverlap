@@ -8,7 +8,9 @@ import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.LocaleList;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.TypedValue;
@@ -33,6 +35,7 @@ public final class ConfigStore {
 
     public static final String KEY_FC_ENABLED = "fc_enabled";
     public static final String KEY_FC_OPACITY = "fc_opacity";
+    public static final String KEY_FC_IMMERSIVE_OPACITY = "fc_immersive_opacity";
     public static final String KEY_FC_ISLAND_OPACITY = "fc_island_opacity";
     public static final String KEY_FC_BLUR = "fc_blur";
     public static final String KEY_FC_BOTTOM_GLOW = "fc_bottom_glow";
@@ -53,6 +56,11 @@ public final class ConfigStore {
     public static final String KEY_FC_NON_MEDIA_MASK_COLOR = "fc_non_media_mask_color";
     public static final String KEY_FC_NON_MEDIA_MASK_LAST_COLOR = "fc_non_media_mask_last_color";
     public static final String KEY_FC_NON_MEDIA_MASK_OPACITY = "fc_non_media_mask_opacity";
+    public static final String KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY = "fc_non_media_follow_mask_opacity";
+    public static final String KEY_FC_MASK_GRAD_START = "fc_mask_grad_start";
+    public static final String KEY_FC_MASK_GRAD_END = "fc_mask_grad_end";
+    public static final String KEY_FC_MASK_GRAD_MID = "fc_mask_grad_mid";
+    public static final String KEY_FC_MASK_GRAD_STRENGTH = "fc_mask_grad_strength";
     public static final String KEY_FC_DEBUG_MODE = "fc_debug_mode";
     public static final String KEY_FC_VER = "fc_ver";
     public static final String KEY_FC_MIGRATED = "fc_migrated";
@@ -72,6 +80,7 @@ public final class ConfigStore {
     public static final int OFFSET_STEP = 5;
 
     public static final int DEF_FC_OPACITY = 100;
+    public static final int DEF_FC_IMMERSIVE_OPACITY = 100;
     public static final int DEF_FC_ISLAND_OPACITY = 45;
     public static final int DEF_FC_BLUR = 100;
     public static final int MAX_FC_BLUR = 300;
@@ -84,13 +93,22 @@ public final class ConfigStore {
     public static final int DEF_FC_MASK_STRENGTH = 100;
     public static final int MAX_FC_MASK_STRENGTH = 200;
     public static final int DEF_FC_NON_MEDIA_MASK_OPACITY = 100;
+    public static final int DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY = 100;
+    public static final int DEF_FC_MASK_GRAD_START = 0;
+    public static final int DEF_FC_MASK_GRAD_END = 80;
+    public static final int DEF_FC_MASK_GRAD_MID = 50;
+    public static final int DEF_FC_MASK_GRAD_STRENGTH = 100;
+    public static final int MIN_FC_MASK_GRAD_SPAN = 10;
+    public static final int MIN_FC_MASK_GRAD_MID = 15;
+    public static final int MAX_FC_MASK_GRAD_MID = 85;
+    public static final int SMOOTH_GRAD_SAMPLES = 16;
     public static final int DEF_NON_MEDIA_MASK_COLOR = 0xFF4FC3F7;
     public static final int DEF_FC_COLOR = 0;
     public static final int DEF_CUSTOM_COLOR = 0xFF4FC3F7;
 
     private static final int LOG_LIMIT = 160;
     private static final long REMOTE_RETRY_INTERVAL_MS = 2000L;
-    private static final long RELOAD_THROTTLE_MS = 500L;
+    private static final long RELOAD_THROTTLE_MS = 1000L;
 
     private ConfigStore() {
     }
@@ -104,6 +122,7 @@ public final class ConfigStore {
         public boolean lockNotifGlowFollowMedia;
         public boolean fcEnabled;
         public int fcOpacity;
+        public int fcImmersiveOpacity;
         public int fcIslandOpacity;
         public int fcBlur;
         public int fcBottomGlow;
@@ -123,6 +142,11 @@ public final class ConfigStore {
         public int fcNonMediaMaskColor;
         public int fcNonMediaMaskLastColor;
         public int fcNonMediaMaskOpacity;
+        public int fcNonMediaFollowMaskOpacity;
+        public int fcMaskGradStart;
+        public int fcMaskGradEnd;
+        public int fcMaskGradMid;
+        public int fcMaskGradStrength;
         public boolean fcDebugMode;
         public int fcVer;
 
@@ -136,6 +160,7 @@ public final class ConfigStore {
             s.lockNotifGlowFollowMedia = lockNotifGlowFollowMedia;
             s.fcEnabled = fcEnabled;
             s.fcOpacity = fcOpacity;
+            s.fcImmersiveOpacity = fcImmersiveOpacity;
             s.fcIslandOpacity = fcIslandOpacity;
             s.fcBlur = fcBlur;
             s.fcBottomGlow = fcBottomGlow;
@@ -155,6 +180,11 @@ public final class ConfigStore {
             s.fcNonMediaMaskColor = fcNonMediaMaskColor;
             s.fcNonMediaMaskLastColor = fcNonMediaMaskLastColor;
             s.fcNonMediaMaskOpacity = fcNonMediaMaskOpacity;
+            s.fcNonMediaFollowMaskOpacity = fcNonMediaFollowMaskOpacity;
+            s.fcMaskGradStart = fcMaskGradStart;
+            s.fcMaskGradEnd = fcMaskGradEnd;
+            s.fcMaskGradMid = fcMaskGradMid;
+            s.fcMaskGradStrength = fcMaskGradStrength;
             s.fcDebugMode = fcDebugMode;
             s.fcVer = fcVer;
             return s;
@@ -187,6 +217,102 @@ public final class ConfigStore {
 
     public static int clampMaskStrength(int value) {
         return Math.max(0, Math.min(MAX_FC_MASK_STRENGTH, value));
+    }
+
+    public static int clampMaskGradMid(int value) {
+        return Math.max(MIN_FC_MASK_GRAD_MID, Math.min(MAX_FC_MASK_GRAD_MID, value));
+    }
+
+    /**
+     * Enforces foolproof gradient mask template bounds:
+     * start in [0, 90], end in [10, 100], end >= start + 10, mid in [15, 85].
+     */
+    public static int[] normalizeGradientPct(int startPct, int endPct, int midPct) {
+        int s = Math.max(0, Math.min(100 - MIN_FC_MASK_GRAD_SPAN, startPct));
+        int e = Math.max(MIN_FC_MASK_GRAD_SPAN, Math.min(100, endPct));
+        if (e < s + MIN_FC_MASK_GRAD_SPAN) {
+            if (s + MIN_FC_MASK_GRAD_SPAN <= 100) {
+                e = s + MIN_FC_MASK_GRAD_SPAN;
+            } else {
+                s = 100 - MIN_FC_MASK_GRAD_SPAN;
+                e = 100;
+            }
+        }
+        int m = clampMaskGradMid(midPct);
+        return new int[]{s, e, m};
+    }
+
+    /**
+     * Returns normalized shader/sampler parameters [sPos, hMid, ePos] where
+     * ePos - sPos >= 0.10 and hMid is in [0.15, 0.85].
+     */
+    public static float[] computeSmoothGradientParams(int startPct, int endPct, int midPct) {
+        int[] norm = normalizeGradientPct(startPct, endPct, midPct);
+        return new float[]{norm[0] / 100.0f, norm[2] / 100.0f, norm[1] / 100.0f};
+    }
+
+    /**
+     * Evaluates a C2-smooth S-curve from 1.0 (at u=0) down to 0.0 (at u=1),
+     * crossing exactly 0.5 at u = hMid via Schlick's rational bias + quintic smootherstep.
+     */
+    public static float evaluateSmoothGradientFactor(float u, float hMid) {
+        float uc = Math.max(0.0f, Math.min(1.0f, u));
+        float h = Math.max(MIN_FC_MASK_GRAD_MID / 100.0f, Math.min(MAX_FC_MASK_GRAD_MID / 100.0f, hMid));
+        float denom = uc * (1.0f - 2.0f * h) + h;
+        float w = (uc * (1.0f - h)) / Math.max(denom, 0.001f);
+        float w2 = w * w;
+        float smooth = w2 * w * (w * (6.0f * w - 15.0f) + 10.0f);
+        return Math.max(0.0f, Math.min(1.0f, 1.0f - smooth));
+    }
+
+    public static final class SmoothGradientSpec {
+        public final int[] colors;
+        public final float[] positions;
+
+        SmoothGradientSpec(int[] colors, float[] positions) {
+            this.colors = colors;
+            this.positions = positions;
+        }
+    }
+
+    /**
+     * Builds multi-stop colors and positions for LinearGradient matching the AGSL mask shader,
+     * preserving constant RGB on transparent stops to prevent dark/white fringe artifacts.
+     */
+    public static SmoothGradientSpec buildSmoothGradient(int rgb, int peakAlpha,
+                                                           int startPct, int endPct, int midPct) {
+        float[] params = computeSmoothGradientParams(startPct, endPct, midPct);
+        float sPos = params[0];
+        float hMid = params[1];
+        float ePos = params[2];
+        int baseRgb = rgb & 0x00FFFFFF;
+        int peakA = Math.max(0, Math.min(255, peakAlpha));
+        boolean needLead = sPos > 0.001f;
+        boolean needTrail = ePos < 0.999f;
+        int samples = SMOOTH_GRAD_SAMPLES + 1;
+        int total = samples + (needLead ? 1 : 0) + (needTrail ? 1 : 0);
+        int[] colors = new int[total];
+        float[] positions = new float[total];
+        int idx = 0;
+        if (needLead) {
+            positions[idx] = 0.0f;
+            colors[idx] = (peakA << 24) | baseRgb;
+            idx++;
+        }
+        float span = ePos - sPos;
+        for (int i = 0; i <= SMOOTH_GRAD_SAMPLES; i++) {
+            float u = i / (float) SMOOTH_GRAD_SAMPLES;
+            float fac = evaluateSmoothGradientFactor(u, hMid);
+            int a = Math.max(0, Math.min(255, Math.round(peakA * fac)));
+            positions[idx] = sPos + u * span;
+            colors[idx] = (a << 24) | baseRgb;
+            idx++;
+        }
+        if (needTrail) {
+            positions[idx] = 1.0f;
+            colors[idx] = baseRgb;
+        }
+        return new SmoothGradientSpec(colors, positions);
     }
 
     public static int normalizePickerColor(int raw) {
@@ -529,6 +655,8 @@ public final class ConfigStore {
         s.lockNotifGlowFollowMedia = prefs.getBoolean(KEY_LOCK_NOTIF_GLOW_FOLLOW_MEDIA, false);
         s.fcEnabled = prefs.getBoolean(KEY_FC_ENABLED, true);
         s.fcOpacity = clampOpacity(prefs.getInt(KEY_FC_OPACITY, DEF_FC_OPACITY));
+        int fallbackImm = prefs.contains(KEY_FC_OPACITY) ? s.fcOpacity : DEF_FC_IMMERSIVE_OPACITY;
+        s.fcImmersiveOpacity = clampOpacity(prefs.getInt(KEY_FC_IMMERSIVE_OPACITY, fallbackImm));
         int fallbackIsland = prefs.contains(KEY_FC_OPACITY) ? s.fcOpacity : DEF_FC_ISLAND_OPACITY;
         s.fcIslandOpacity = clampOpacity(prefs.getInt(KEY_FC_ISLAND_OPACITY, fallbackIsland));
         s.fcBlur = clampBlur(prefs.getInt(KEY_FC_BLUR, DEF_FC_BLUR));
@@ -559,6 +687,19 @@ public final class ConfigStore {
         s.fcNonMediaMaskLastColor = normalizePickerColor(lastNonMedia);
         s.fcNonMediaMaskOpacity = clampMaskStrength(
                 prefs.getInt(KEY_FC_NON_MEDIA_MASK_OPACITY, DEF_FC_NON_MEDIA_MASK_OPACITY));
+        s.fcNonMediaFollowMaskOpacity = prefs.contains(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY)
+                ? clampMaskStrength(prefs.getInt(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY,
+                        DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY))
+                : s.fcNonMediaMaskOpacity;
+        int[] gradNorm = normalizeGradientPct(
+                prefs.getInt(KEY_FC_MASK_GRAD_START, DEF_FC_MASK_GRAD_START),
+                prefs.getInt(KEY_FC_MASK_GRAD_END, DEF_FC_MASK_GRAD_END),
+                prefs.getInt(KEY_FC_MASK_GRAD_MID, DEF_FC_MASK_GRAD_MID));
+        s.fcMaskGradStart = gradNorm[0];
+        s.fcMaskGradEnd = gradNorm[1];
+        s.fcMaskGradMid = gradNorm[2];
+        s.fcMaskGradStrength = clampMaskStrength(
+                prefs.getInt(KEY_FC_MASK_GRAD_STRENGTH, DEF_FC_MASK_GRAD_STRENGTH));
         s.fcDebugMode = prefs.getBoolean(KEY_FC_DEBUG_MODE, false);
         s.fcVer = prefs.getInt(KEY_FC_VER, 0);
         return s;
@@ -574,6 +715,7 @@ public final class ConfigStore {
         s.lockNotifGlowFollowMedia = false;
         s.fcEnabled = true;
         s.fcOpacity = DEF_FC_OPACITY;
+        s.fcImmersiveOpacity = DEF_FC_IMMERSIVE_OPACITY;
         s.fcIslandOpacity = DEF_FC_ISLAND_OPACITY;
         s.fcBlur = DEF_FC_BLUR;
         s.fcBottomGlow = DEF_FC_BOTTOM_GLOW;
@@ -593,6 +735,11 @@ public final class ConfigStore {
         s.fcNonMediaMaskColor = DEF_NON_MEDIA_MASK_COLOR;
         s.fcNonMediaMaskLastColor = DEF_NON_MEDIA_MASK_COLOR;
         s.fcNonMediaMaskOpacity = DEF_FC_NON_MEDIA_MASK_OPACITY;
+        s.fcNonMediaFollowMaskOpacity = DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY;
+        s.fcMaskGradStart = DEF_FC_MASK_GRAD_START;
+        s.fcMaskGradEnd = DEF_FC_MASK_GRAD_END;
+        s.fcMaskGradMid = DEF_FC_MASK_GRAD_MID;
+        s.fcMaskGradStrength = DEF_FC_MASK_GRAD_STRENGTH;
         s.fcDebugMode = false;
         s.fcVer = 0;
         return s;
@@ -611,6 +758,8 @@ public final class ConfigStore {
         s.lockNotifGlowFollowMedia = readMapBool(map, KEY_LOCK_NOTIF_GLOW_FOLLOW_MEDIA, false);
         s.fcEnabled = readMapBool(map, KEY_FC_ENABLED, true);
         s.fcOpacity = clampOpacity(readMapInt(map, KEY_FC_OPACITY, DEF_FC_OPACITY));
+        int fallbackImm = map.containsKey(KEY_FC_OPACITY) ? s.fcOpacity : DEF_FC_IMMERSIVE_OPACITY;
+        s.fcImmersiveOpacity = clampOpacity(readMapInt(map, KEY_FC_IMMERSIVE_OPACITY, fallbackImm));
         int fallbackIsland = map.containsKey(KEY_FC_OPACITY) ? s.fcOpacity : DEF_FC_ISLAND_OPACITY;
         s.fcIslandOpacity = clampOpacity(readMapInt(map, KEY_FC_ISLAND_OPACITY, fallbackIsland));
         s.fcBlur = clampBlur(readMapInt(map, KEY_FC_BLUR, DEF_FC_BLUR));
@@ -641,6 +790,19 @@ public final class ConfigStore {
         s.fcNonMediaMaskLastColor = normalizePickerColor(lastNonMedia);
         s.fcNonMediaMaskOpacity = clampMaskStrength(
                 readMapInt(map, KEY_FC_NON_MEDIA_MASK_OPACITY, DEF_FC_NON_MEDIA_MASK_OPACITY));
+        s.fcNonMediaFollowMaskOpacity = map.containsKey(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY)
+                ? clampMaskStrength(readMapInt(map, KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY,
+                        DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY))
+                : s.fcNonMediaMaskOpacity;
+        int[] gradNorm = normalizeGradientPct(
+                readMapInt(map, KEY_FC_MASK_GRAD_START, DEF_FC_MASK_GRAD_START),
+                readMapInt(map, KEY_FC_MASK_GRAD_END, DEF_FC_MASK_GRAD_END),
+                readMapInt(map, KEY_FC_MASK_GRAD_MID, DEF_FC_MASK_GRAD_MID));
+        s.fcMaskGradStart = gradNorm[0];
+        s.fcMaskGradEnd = gradNorm[1];
+        s.fcMaskGradMid = gradNorm[2];
+        s.fcMaskGradStrength = clampMaskStrength(
+                readMapInt(map, KEY_FC_MASK_GRAD_STRENGTH, DEF_FC_MASK_GRAD_STRENGTH));
         s.fcDebugMode = readMapBool(map, KEY_FC_DEBUG_MODE, false);
         s.fcVer = readMapInt(map, KEY_FC_VER, 0);
         return s;
@@ -648,6 +810,7 @@ public final class ConfigStore {
 
     public static Map<String, Object> toMap(SettingsData s) {
         Map<String, Object> map = new HashMap<>();
+        int[] gradNorm = normalizeGradientPct(s.fcMaskGradStart, s.fcMaskGradEnd, s.fcMaskGradMid);
         map.put(KEY_ALIGN, s.align);
         map.put(KEY_OFFSET, clamp(s.offset));
         map.put(KEY_IMMERSIVE_FP, s.immersiveFp);
@@ -656,6 +819,7 @@ public final class ConfigStore {
         map.put(KEY_LOCK_NOTIF_GLOW_FOLLOW_MEDIA, s.lockNotifGlowFollowMedia);
         map.put(KEY_FC_ENABLED, s.fcEnabled);
         map.put(KEY_FC_OPACITY, clampOpacity(s.fcOpacity));
+        map.put(KEY_FC_IMMERSIVE_OPACITY, clampOpacity(s.fcImmersiveOpacity));
         map.put(KEY_FC_ISLAND_OPACITY, clampOpacity(s.fcIslandOpacity));
         map.put(KEY_FC_BLUR, clampBlur(s.fcBlur));
         map.put(KEY_FC_BOTTOM_GLOW_BOOST, clampBottomGlow(s.fcBottomGlow));
@@ -675,6 +839,11 @@ public final class ConfigStore {
         map.put(KEY_FC_NON_MEDIA_MASK_COLOR, normalizePickerColor(s.fcNonMediaMaskColor));
         map.put(KEY_FC_NON_MEDIA_MASK_LAST_COLOR, normalizePickerColor(s.fcNonMediaMaskLastColor));
         map.put(KEY_FC_NON_MEDIA_MASK_OPACITY, clampMaskStrength(s.fcNonMediaMaskOpacity));
+        map.put(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY, clampMaskStrength(s.fcNonMediaFollowMaskOpacity));
+        map.put(KEY_FC_MASK_GRAD_START, gradNorm[0]);
+        map.put(KEY_FC_MASK_GRAD_END, gradNorm[1]);
+        map.put(KEY_FC_MASK_GRAD_MID, gradNorm[2]);
+        map.put(KEY_FC_MASK_GRAD_STRENGTH, clampMaskStrength(s.fcMaskGradStrength));
         map.put(KEY_FC_DEBUG_MODE, s.fcDebugMode);
         map.put(KEY_FC_VER, s.fcVer);
         return map;
@@ -715,6 +884,7 @@ public final class ConfigStore {
     public static void saveLocal(Context ctx, SharedPreferences prefs, boolean xspActive, SettingsData s) {
         s.offset = clamp(s.offset);
         s.fcOpacity = clampOpacity(s.fcOpacity);
+        s.fcImmersiveOpacity = clampOpacity(s.fcImmersiveOpacity);
         s.fcIslandOpacity = clampOpacity(s.fcIslandOpacity);
         s.fcBlur = clampBlur(s.fcBlur);
         s.fcBottomGlow = clampBottomGlow(s.fcBottomGlow);
@@ -731,6 +901,12 @@ public final class ConfigStore {
         s.fcNonMediaMaskColor = normalizePickerColor(s.fcNonMediaMaskColor);
         s.fcNonMediaMaskLastColor = s.fcNonMediaMaskColor;
         s.fcNonMediaMaskOpacity = clampMaskStrength(s.fcNonMediaMaskOpacity);
+        s.fcNonMediaFollowMaskOpacity = clampMaskStrength(s.fcNonMediaFollowMaskOpacity);
+        int[] gradNorm = normalizeGradientPct(s.fcMaskGradStart, s.fcMaskGradEnd, s.fcMaskGradMid);
+        s.fcMaskGradStart = gradNorm[0];
+        s.fcMaskGradEnd = gradNorm[1];
+        s.fcMaskGradMid = gradNorm[2];
+        s.fcMaskGradStrength = clampMaskStrength(s.fcMaskGradStrength);
         s.fcVer = s.fcVer + 1;
 
         prefs.edit()
@@ -742,6 +918,7 @@ public final class ConfigStore {
                 .putBoolean(KEY_LOCK_NOTIF_GLOW_FOLLOW_MEDIA, s.lockNotifGlowFollowMedia)
                 .putBoolean(KEY_FC_ENABLED, s.fcEnabled)
                 .putInt(KEY_FC_OPACITY, s.fcOpacity)
+                .putInt(KEY_FC_IMMERSIVE_OPACITY, s.fcImmersiveOpacity)
                 .putInt(KEY_FC_ISLAND_OPACITY, s.fcIslandOpacity)
                 .putInt(KEY_FC_BLUR, s.fcBlur)
                 .putInt(KEY_FC_BOTTOM_GLOW_BOOST, s.fcBottomGlow)
@@ -761,6 +938,11 @@ public final class ConfigStore {
                 .putInt(KEY_FC_NON_MEDIA_MASK_COLOR, s.fcNonMediaMaskColor)
                 .putInt(KEY_FC_NON_MEDIA_MASK_LAST_COLOR, s.fcNonMediaMaskLastColor)
                 .putInt(KEY_FC_NON_MEDIA_MASK_OPACITY, s.fcNonMediaMaskOpacity)
+                .putInt(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY, s.fcNonMediaFollowMaskOpacity)
+                .putInt(KEY_FC_MASK_GRAD_START, s.fcMaskGradStart)
+                .putInt(KEY_FC_MASK_GRAD_END, s.fcMaskGradEnd)
+                .putInt(KEY_FC_MASK_GRAD_MID, s.fcMaskGradMid)
+                .putInt(KEY_FC_MASK_GRAD_STRENGTH, s.fcMaskGradStrength)
                 .putBoolean(KEY_FC_DEBUG_MODE, s.fcDebugMode)
                 .putInt(KEY_FC_VER, s.fcVer)
                 .putBoolean(KEY_FC_MIGRATED, true)
@@ -775,39 +957,53 @@ public final class ConfigStore {
         private final XposedModule module;
         private SharedPreferences remotePrefs;
         private SharedPreferences.OnSharedPreferenceChangeListener remoteListener;
+        private final Handler reloadHandler = new Handler(Looper.getMainLooper());
+        private final Runnable remoteReloadTask = new Runnable() {
+            @Override
+            public void run() {
+                reload(true);
+            }
+        };
         private long lastRemoteInitAttemptMs;
-        private long lastCheckUptimeMs;
+        private volatile long lastCheckUptimeMs;
 
-        private boolean alignEnabled;
-        private int userOffset;
-        private boolean immersiveFpEnabled = true;
-        private boolean hideFpOnCapsule = true;
+        private volatile boolean alignEnabled;
+        private volatile int userOffset;
+        private volatile boolean immersiveFpEnabled = true;
+        private volatile boolean hideFpOnCapsule = true;
         private volatile boolean aodNotifTranslucent = false;
         private volatile boolean lockNotifGlowFollowMedia = false;
 
-        private boolean fcEnabled = true;
-        private int fcOpacity = DEF_FC_OPACITY;
-        private int fcIslandOpacity = DEF_FC_ISLAND_OPACITY;
-        private int fcBlur = DEF_FC_BLUR;
-        private int fcBottomGlow = DEF_FC_BOTTOM_GLOW;
-        private int fcBottomGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
-        private int fcSingleGlow = DEF_FC_BOTTOM_GLOW;
-        private int fcSingleGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
-        private int fcColor = DEF_FC_COLOR;
-        private boolean fcMatchCard = true;
-        private boolean fcRemoveIslandMask = true;
-        private boolean fcRemoveShadeMask = false;
-        private boolean fcMaskFollowMedia = false;
-        private int fcMaskBrightness = DEF_FC_MASK_BRIGHTNESS;
-        private int fcMaskChroma = DEF_FC_MASK_CHROMA;
+        private volatile boolean fcEnabled = true;
+        private volatile int fcOpacity = DEF_FC_OPACITY;
+        private volatile int fcImmersiveOpacity = DEF_FC_IMMERSIVE_OPACITY;
+        private volatile int fcIslandOpacity = DEF_FC_ISLAND_OPACITY;
+        private volatile int fcBlur = DEF_FC_BLUR;
+        private volatile int fcBottomGlow = DEF_FC_BOTTOM_GLOW;
+        private volatile int fcBottomGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
+        private volatile int fcSingleGlow = DEF_FC_BOTTOM_GLOW;
+        private volatile int fcSingleGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
+        private volatile int fcColor = DEF_FC_COLOR;
+        private volatile boolean fcMatchCard = true;
+        private volatile boolean fcRemoveIslandMask = true;
+        private volatile boolean fcRemoveShadeMask = false;
+        private volatile boolean fcMaskFollowMedia = false;
+        private volatile int fcMaskBrightness = DEF_FC_MASK_BRIGHTNESS;
+        private volatile int fcMaskChroma = DEF_FC_MASK_CHROMA;
         private volatile int fcMaskStrength = DEF_FC_MASK_STRENGTH;
         private volatile boolean fcNonMediaMaskEnabled = false;
         private volatile int fcNonMediaMaskColor = DEF_NON_MEDIA_MASK_COLOR;
         private volatile int fcNonMediaMaskOpacity = DEF_FC_NON_MEDIA_MASK_OPACITY;
+        private volatile int fcNonMediaFollowMaskOpacity = DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY;
+        private volatile int fcMaskGradStart = DEF_FC_MASK_GRAD_START;
+        private volatile int fcMaskGradEnd = DEF_FC_MASK_GRAD_END;
+        private volatile int fcMaskGradMid = DEF_FC_MASK_GRAD_MID;
+        private volatile int fcMaskGradStrength = DEF_FC_MASK_GRAD_STRENGTH;
         private volatile boolean fcDebugMode = false;
-        private int fcVersion;
+        private volatile int fcVersion;
+        private volatile boolean remotePrefsReady;
 
-        private String activeChannel = "none";
+        private volatile String activeChannel = "none";
 
         private boolean firstLog = true;
         private boolean lastLoggedAlign;
@@ -818,6 +1014,7 @@ public final class ConfigStore {
         private boolean lastLoggedLockNotifGlowFollowMedia;
         private boolean lastLoggedFcEnabled;
         private int lastLoggedFcOpacity;
+        private int lastLoggedFcImmersiveOpacity;
         private int lastLoggedFcIslandOpacity;
         private int lastLoggedFcBlur;
         private int lastLoggedFcBottomGlow;
@@ -835,6 +1032,11 @@ public final class ConfigStore {
         private boolean lastLoggedFcNonMediaMaskEnabled;
         private int lastLoggedFcNonMediaMaskColor;
         private int lastLoggedFcNonMediaMaskOpacity;
+        private int lastLoggedFcNonMediaFollowMaskOpacity;
+        private int lastLoggedFcMaskGradStart;
+        private int lastLoggedFcMaskGradEnd;
+        private int lastLoggedFcMaskGradMid;
+        private int lastLoggedFcMaskGradStrength;
         private boolean lastLoggedFcDebugMode;
         private int loggedCount;
 
@@ -850,6 +1052,7 @@ public final class ConfigStore {
                     + " lockNotifGlowMedia=" + lockNotifGlowFollowMedia
                     + " fc=" + fcEnabled
                     + " op=" + fcOpacity
+                    + " immOp=" + fcImmersiveOpacity
                     + " islandOp=" + fcIslandOpacity
                     + " blur=" + fcBlur
                     + " glow=" + fcBottomGlow
@@ -867,6 +1070,8 @@ public final class ConfigStore {
                     + " nonMediaMaskEn=" + fcNonMediaMaskEnabled
                     + " nonMediaMask=0x" + Integer.toHexString(fcNonMediaMaskColor)
                     + " nonMediaOp=" + fcNonMediaMaskOpacity
+                    + " nonMediaFollowOp=" + fcNonMediaFollowMaskOpacity
+                    + " maskGrad=" + fcMaskGradStart + "/" + fcMaskGradEnd + "/" + fcMaskGradMid + "/" + fcMaskGradStrength
                     + " debug=" + fcDebugMode);
         }
 
@@ -913,6 +1118,21 @@ public final class ConfigStore {
         public float getFcOpacity() {
             reload(false);
             return fcOpacity / 100.0f;
+        }
+
+        public int getFcImmersiveOpacityInt() {
+            reload(false);
+            return fcImmersiveOpacity;
+        }
+
+        public float getFcImmersiveOpacity() {
+            reload(false);
+            return fcImmersiveOpacity / 100.0f;
+        }
+
+        public boolean isFcImmersiveOpacityModified() {
+            reload(false);
+            return fcColor != 0 || fcImmersiveOpacity < 100;
         }
 
         public int getFcIslandOpacityInt() {
@@ -1040,6 +1260,59 @@ public final class ConfigStore {
             return fcNonMediaMaskOpacity / 100.0f;
         }
 
+        public int getFcNonMediaFollowMaskOpacityInt() {
+            reload(false);
+            return fcNonMediaFollowMaskOpacity;
+        }
+
+        public float getFcNonMediaFollowMaskOpacityScale() {
+            reload(false);
+            return fcNonMediaFollowMaskOpacity / 100.0f;
+        }
+
+        public float getEffectiveNonMediaMaskOpacityScale() {
+            reload(false);
+            return (fcNonMediaMaskEnabled ? fcNonMediaFollowMaskOpacity : fcNonMediaMaskOpacity) / 100.0f;
+        }
+
+        public float getNonMediaMaskOpacityScaleForTint(boolean applyingMediaTint) {
+            reload(false);
+            return (applyingMediaTint ? fcNonMediaFollowMaskOpacity : fcNonMediaMaskOpacity) / 100.0f;
+        }
+
+        public int getFcMaskGradStartInt() {
+            reload(false);
+            return fcMaskGradStart;
+        }
+
+        public int getFcMaskGradEndInt() {
+            reload(false);
+            return fcMaskGradEnd;
+        }
+
+        public int getFcMaskGradMidInt() {
+            reload(false);
+            return fcMaskGradMid;
+        }
+
+        public int getFcMaskGradStrengthInt() {
+            reload(false);
+            return fcMaskGradStrength;
+        }
+
+        public float getFcMaskGradStrengthScale() {
+            reload(false);
+            return fcMaskGradStrength / 100.0f;
+        }
+
+        public boolean isFcMaskGradTemplateModified() {
+            reload(false);
+            return fcMaskGradStart != DEF_FC_MASK_GRAD_START
+                    || fcMaskGradEnd != DEF_FC_MASK_GRAD_END
+                    || fcMaskGradMid != DEF_FC_MASK_GRAD_MID
+                    || fcMaskGradStrength != DEF_FC_MASK_GRAD_STRENGTH;
+        }
+
         public boolean isFcDebugMode() {
             reload(false);
             return fcDebugMode;
@@ -1055,7 +1328,9 @@ public final class ConfigStore {
             return fcColor != 0 || fcOpacity < 100 || fcMatchCard
                     || fcMaskFollowMedia || fcNonMediaMaskEnabled
                     || fcMaskStrength != DEF_FC_MASK_STRENGTH
-                    || fcNonMediaMaskOpacity != DEF_FC_NON_MEDIA_MASK_OPACITY;
+                    || fcNonMediaMaskOpacity != DEF_FC_NON_MEDIA_MASK_OPACITY
+                    || fcNonMediaFollowMaskOpacity != DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY
+                    || isFcMaskGradTemplateModified();
         }
 
         public boolean isFcStockAppearance() {
@@ -1088,13 +1363,27 @@ public final class ConfigStore {
             XposedCompat.log(message);
         }
 
-        public synchronized void reload(boolean force) {
-            long now = SystemClock.uptimeMillis();
-            if (!force && lastCheckUptimeMs != 0L && (now - lastCheckUptimeMs) < RELOAD_THROTTLE_MS) {
+        public void reload(boolean force) {
+            if (!force && remotePrefsReady) {
                 return;
             }
-            lastCheckUptimeMs = now;
-            tryLoadRemotePrefs(force);
+            if (!force) {
+                long prevCheck = lastCheckUptimeMs;
+                if (prevCheck != 0L && (SystemClock.uptimeMillis() - prevCheck) < RELOAD_THROTTLE_MS) {
+                    return;
+                }
+            }
+            synchronized (this) {
+                if (!force && remotePrefsReady) {
+                    return;
+                }
+                long now = SystemClock.uptimeMillis();
+                if (!force && lastCheckUptimeMs != 0L && (now - lastCheckUptimeMs) < RELOAD_THROTTLE_MS) {
+                    return;
+                }
+                lastCheckUptimeMs = now;
+                tryLoadRemotePrefs(force);
+            }
         }
 
         private boolean tryLoadRemotePrefs(boolean force) {
@@ -1109,10 +1398,12 @@ public final class ConfigStore {
                         remoteListener = new SharedPreferences.OnSharedPreferenceChangeListener() {
                             @Override
                             public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-                                reload(true);
+                                reloadHandler.removeCallbacks(remoteReloadTask);
+                                reloadHandler.postDelayed(remoteReloadTask, 16L);
                             }
                         };
                         sp.registerOnSharedPreferenceChangeListener(remoteListener);
+                        remotePrefsReady = true;
                     }
                 }
                 if (remotePrefs == null || !hasAnySetting(remotePrefs)) {
@@ -1125,8 +1416,11 @@ public final class ConfigStore {
                 aodNotifTranslucent = remotePrefs.getBoolean(KEY_AOD_NOTIF_TRANSLUCENT, false);
                 lockNotifGlowFollowMedia = remotePrefs.getBoolean(KEY_LOCK_NOTIF_GLOW_FOLLOW_MEDIA, false);
                 fcEnabled = remotePrefs.getBoolean(KEY_FC_ENABLED, true);
-                fcOpacity = clampOpacity(remotePrefs.getInt(KEY_FC_OPACITY, DEF_FC_OPACITY));
-                int fallbackIsland = remotePrefs.contains(KEY_FC_OPACITY) ? fcOpacity : DEF_FC_ISLAND_OPACITY;
+                int nextOp = clampOpacity(remotePrefs.getInt(KEY_FC_OPACITY, DEF_FC_OPACITY));
+                fcOpacity = nextOp;
+                int fallbackImm = remotePrefs.contains(KEY_FC_OPACITY) ? nextOp : DEF_FC_IMMERSIVE_OPACITY;
+                fcImmersiveOpacity = clampOpacity(remotePrefs.getInt(KEY_FC_IMMERSIVE_OPACITY, fallbackImm));
+                int fallbackIsland = remotePrefs.contains(KEY_FC_OPACITY) ? nextOp : DEF_FC_ISLAND_OPACITY;
                 fcIslandOpacity = clampOpacity(remotePrefs.getInt(KEY_FC_ISLAND_OPACITY, fallbackIsland));
                 fcBlur = clampBlur(remotePrefs.getInt(KEY_FC_BLUR, DEF_FC_BLUR));
                 fcBottomGlow = readGlowBoostFromPrefs(remotePrefs);
@@ -1157,11 +1451,24 @@ public final class ConfigStore {
                 fcNonMediaMaskColor = normalizePickerColor(rawNonMedia);
                 fcNonMediaMaskOpacity = clampMaskStrength(
                         remotePrefs.getInt(KEY_FC_NON_MEDIA_MASK_OPACITY, DEF_FC_NON_MEDIA_MASK_OPACITY));
+                fcNonMediaFollowMaskOpacity = remotePrefs.contains(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY)
+                        ? clampMaskStrength(remotePrefs.getInt(KEY_FC_NON_MEDIA_FOLLOW_MASK_OPACITY,
+                                DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY))
+                        : fcNonMediaMaskOpacity;
+                int[] gradNorm = normalizeGradientPct(
+                        remotePrefs.getInt(KEY_FC_MASK_GRAD_START, DEF_FC_MASK_GRAD_START),
+                        remotePrefs.getInt(KEY_FC_MASK_GRAD_END, DEF_FC_MASK_GRAD_END),
+                        remotePrefs.getInt(KEY_FC_MASK_GRAD_MID, DEF_FC_MASK_GRAD_MID));
+                fcMaskGradStart = gradNorm[0];
+                fcMaskGradEnd = gradNorm[1];
+                fcMaskGradMid = gradNorm[2];
+                fcMaskGradStrength = clampMaskStrength(
+                        remotePrefs.getInt(KEY_FC_MASK_GRAD_STRENGTH, DEF_FC_MASK_GRAD_STRENGTH));
                 fcDebugMode = remotePrefs.getBoolean(KEY_FC_DEBUG_MODE, false);
                 fcVersion = remotePrefs.getInt(KEY_FC_VER, 0);
 
                 activeChannel = "api102_remote";
-                maybeNoteChange(force);
+                maybeNoteChange();
                 return true;
             } catch (Throwable t) {
                 if (force) {
@@ -1171,8 +1478,8 @@ public final class ConfigStore {
             }
         }
 
-        private void maybeNoteChange(boolean force) {
-            if (!firstLog && !force
+        private void maybeNoteChange() {
+            if (!firstLog
                     && alignEnabled == lastLoggedAlign
                     && userOffset == lastLoggedOffset
                     && immersiveFpEnabled == lastLoggedImmFp
@@ -1181,6 +1488,7 @@ public final class ConfigStore {
                     && lockNotifGlowFollowMedia == lastLoggedLockNotifGlowFollowMedia
                     && fcEnabled == lastLoggedFcEnabled
                     && fcOpacity == lastLoggedFcOpacity
+                    && fcImmersiveOpacity == lastLoggedFcImmersiveOpacity
                     && fcIslandOpacity == lastLoggedFcIslandOpacity
                     && fcBlur == lastLoggedFcBlur
                     && fcBottomGlow == lastLoggedFcBottomGlow
@@ -1198,6 +1506,11 @@ public final class ConfigStore {
                     && fcNonMediaMaskEnabled == lastLoggedFcNonMediaMaskEnabled
                     && fcNonMediaMaskColor == lastLoggedFcNonMediaMaskColor
                     && fcNonMediaMaskOpacity == lastLoggedFcNonMediaMaskOpacity
+                    && fcNonMediaFollowMaskOpacity == lastLoggedFcNonMediaFollowMaskOpacity
+                    && fcMaskGradStart == lastLoggedFcMaskGradStart
+                    && fcMaskGradEnd == lastLoggedFcMaskGradEnd
+                    && fcMaskGradMid == lastLoggedFcMaskGradMid
+                    && fcMaskGradStrength == lastLoggedFcMaskGradStrength
                     && fcDebugMode == lastLoggedFcDebugMode) {
                 return;
             }
@@ -1209,6 +1522,7 @@ public final class ConfigStore {
                     + " lockNotifGlowMedia=" + lockNotifGlowFollowMedia
                     + " fc=" + fcEnabled
                     + " op=" + fcOpacity
+                    + " immOp=" + fcImmersiveOpacity
                     + " islandOp=" + fcIslandOpacity
                     + " blur=" + fcBlur
                     + " glow=" + fcBottomGlow
@@ -1226,6 +1540,8 @@ public final class ConfigStore {
                     + " nonMediaMaskEn=" + fcNonMediaMaskEnabled
                     + " nonMediaMask=0x" + Integer.toHexString(fcNonMediaMaskColor)
                     + " nonMediaOp=" + fcNonMediaMaskOpacity
+                    + " nonMediaFollowOp=" + fcNonMediaFollowMaskOpacity
+                    + " maskGrad=" + fcMaskGradStart + "/" + fcMaskGradEnd + "/" + fcMaskGradMid + "/" + fcMaskGradStrength
                     + " debug=" + fcDebugMode
                     + " (channel=" + activeChannel + ")");
             lastLoggedAlign = alignEnabled;
@@ -1236,6 +1552,7 @@ public final class ConfigStore {
             lastLoggedLockNotifGlowFollowMedia = lockNotifGlowFollowMedia;
             lastLoggedFcEnabled = fcEnabled;
             lastLoggedFcOpacity = fcOpacity;
+            lastLoggedFcImmersiveOpacity = fcImmersiveOpacity;
             lastLoggedFcIslandOpacity = fcIslandOpacity;
             lastLoggedFcBlur = fcBlur;
             lastLoggedFcBottomGlow = fcBottomGlow;
@@ -1253,6 +1570,11 @@ public final class ConfigStore {
             lastLoggedFcNonMediaMaskEnabled = fcNonMediaMaskEnabled;
             lastLoggedFcNonMediaMaskColor = fcNonMediaMaskColor;
             lastLoggedFcNonMediaMaskOpacity = fcNonMediaMaskOpacity;
+            lastLoggedFcNonMediaFollowMaskOpacity = fcNonMediaFollowMaskOpacity;
+            lastLoggedFcMaskGradStart = fcMaskGradStart;
+            lastLoggedFcMaskGradEnd = fcMaskGradEnd;
+            lastLoggedFcMaskGradMid = fcMaskGradMid;
+            lastLoggedFcMaskGradStrength = fcMaskGradStrength;
             lastLoggedFcDebugMode = fcDebugMode;
             firstLog = false;
         }

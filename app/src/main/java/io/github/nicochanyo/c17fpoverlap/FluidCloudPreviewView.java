@@ -47,6 +47,11 @@ public class FluidCloudPreviewView extends View {
     private boolean fcNonMediaMaskEnabled = false;
     private int fcNonMediaMaskColor = ConfigStore.DEF_NON_MEDIA_MASK_COLOR;
     private int fcNonMediaMaskOpacity = ConfigStore.DEF_FC_NON_MEDIA_MASK_OPACITY;
+    private int fcNonMediaFollowMaskOpacity = ConfigStore.DEF_FC_NON_MEDIA_FOLLOW_MASK_OPACITY;
+    private int fcMaskGradStart = ConfigStore.DEF_FC_MASK_GRAD_START;
+    private int fcMaskGradEnd = ConfigStore.DEF_FC_MASK_GRAD_END;
+    private int fcMaskGradMid = ConfigStore.DEF_FC_MASK_GRAD_MID;
+    private int fcMaskGradStrength = ConfigStore.DEF_FC_MASK_GRAD_STRENGTH;
 
     public FluidCloudPreviewView(Context context) {
         super(context);
@@ -66,7 +71,9 @@ public class FluidCloudPreviewView extends View {
                              boolean removeIslandMask, boolean matchCard,
                              boolean maskFollowMedia, int maskBrightness, int maskChroma,
                              int maskStrength, boolean nonMediaMaskEnabled, int nonMediaMaskColor,
-                             int nonMediaMaskOpacity) {
+                             int nonMediaMaskOpacity, int nonMediaFollowMaskOpacity,
+                             int maskGradStart, int maskGradEnd, int maskGradMid,
+                             int maskGradStrength) {
         this.fcEnabled = enabled;
         this.fcOpacity = ConfigStore.clampOpacity(lockOpacity);
         this.fcIslandOpacity = ConfigStore.clampOpacity(islandOpacity);
@@ -85,6 +92,12 @@ public class FluidCloudPreviewView extends View {
         this.fcNonMediaMaskEnabled = nonMediaMaskEnabled;
         this.fcNonMediaMaskColor = ConfigStore.normalizePickerColor(nonMediaMaskColor);
         this.fcNonMediaMaskOpacity = ConfigStore.clampMaskStrength(nonMediaMaskOpacity);
+        this.fcNonMediaFollowMaskOpacity = ConfigStore.clampMaskStrength(nonMediaFollowMaskOpacity);
+        int[] gradNorm = ConfigStore.normalizeGradientPct(maskGradStart, maskGradEnd, maskGradMid);
+        this.fcMaskGradStart = gradNorm[0];
+        this.fcMaskGradEnd = gradNorm[1];
+        this.fcMaskGradMid = gradNorm[2];
+        this.fcMaskGradStrength = ConfigStore.clampMaskStrength(maskGradStrength);
         invalidate();
     }
 
@@ -138,7 +151,11 @@ public class FluidCloudPreviewView extends View {
 
         float lockOp = fcEnabled ? (fcOpacity / 100.0f) : 1.0f;
         float islandOp = fcEnabled ? (fcIslandOpacity / 100.0f) : 1.0f;
-        float maskStrengthScale = fcEnabled ? (fcMaskStrength / 100.0f) : 1.0f;
+        float gradStrengthScale = fcEnabled ? (fcMaskGradStrength / 100.0f) : 1.0f;
+        int effGradStart = fcEnabled ? fcMaskGradStart : 0;
+        int effGradEnd = fcEnabled ? fcMaskGradEnd : 80;
+        int effGradMid = fcEnabled ? fcMaskGradMid : 50;
+        float maskStrengthScale = (fcEnabled ? (fcMaskStrength / 100.0f) : 1.0f) * gradStrengthScale;
         int glowBoostPct = fcEnabled ? fcBottomGlow : 0;
         int glowChromaPct = fcEnabled ? fcBottomGlowChroma : 0;
         int singleGlowBoostPct = fcEnabled ? fcSingleGlow : 0;
@@ -157,28 +174,29 @@ public class FluidCloudPreviewView extends View {
 
         drawFrostedCard(canvas, islandRect, cardR, r, g, b, islandOp, blurScale);
 
-        // Dark or media-tinted top-to-transparent gradient overlay (independent of card opacity)
-        if (!fcEnabled || (!fcRemoveIslandMask && fcMaskStrength > 0)) {
+        // Dark or media-tinted top-to-transparent gradient overlay (shared smooth template)
+        if (!fcEnabled || (!fcRemoveIslandMask && maskStrengthScale > 0.001f)) {
             boolean mediaMask = fcEnabled && fcMaskFollowMedia;
             int topBlackA = fcEnabled
                     ? Math.min(245, Math.round((mediaMask ? 205f : 195f) * maskStrengthScale))
                     : 210;
             int maskColor = mediaMask ? computePreviewMaskRgb(0xFFE9546B, fcMaskBrightness, fcMaskChroma) : 0;
-            int mr = Color.red(maskColor);
-            int mg = Color.green(maskColor);
-            int mb = Color.blue(maskColor);
+            ConfigStore.SmoothGradientSpec islandSpec = ConfigStore.buildSmoothGradient(
+                    maskColor, topBlackA, effGradStart, effGradEnd, effGradMid);
             islandClip.reset();
             islandClip.addRoundRect(islandRect, cardR, cardR, Path.Direction.CW);
             canvas.save();
             canvas.clipPath(islandClip);
             LinearGradient lg = new LinearGradient(
                     0f, islandRect.top, 0f, islandRect.bottom,
-                    new int[]{Color.argb(topBlackA, mr, mg, mb), Color.argb(topBlackA / 3, mr, mg, mb), Color.TRANSPARENT},
-                    new float[]{0f, 0.55f, 1f},
+                    islandSpec.colors,
+                    islandSpec.positions,
                     Shader.TileMode.CLAMP);
+            paint.setDither(true);
             paint.setShader(lg);
             canvas.drawRect(islandRect, paint);
             paint.setShader(null);
+            paint.setDither(false);
             canvas.restore();
         }
 
@@ -225,20 +243,33 @@ public class FluidCloudPreviewView extends View {
         float capR = capH * 0.5f;
         drawFrostedCard(canvas, capsuleRect, capR, r, g, b, lockOp, blurScale);
 
-        float nonMediaOpacityScale = fcEnabled ? (fcNonMediaMaskOpacity / 100.0f) : 1.0f;
+        boolean nonMediaTint = fcEnabled && fcNonMediaMaskEnabled;
+        int effNonMediaOp = nonMediaTint ? fcNonMediaFollowMaskOpacity : fcNonMediaMaskOpacity;
+        float nonMediaOpacityScale = fcEnabled ? ((effNonMediaOp / 100.0f) * gradStrengthScale) : 1.0f;
         if (!fcEnabled || (!fcMatchCard && nonMediaOpacityScale > 0.001f)) {
-            boolean nonMediaTint = fcEnabled && fcNonMediaMaskEnabled;
-            int scrimA = fcEnabled ? Math.min(220, Math.round(110f * nonMediaOpacityScale)) : 110;
+            int scrimA = fcEnabled ? Math.min(235, Math.round(115f * nonMediaOpacityScale)) : 115;
             int maskColor = nonMediaTint
                     ? computePreviewMaskRgb(0xFFE9546B, fcMaskBrightness, fcMaskChroma)
                     : 0;
             if (scrimA > 0) {
-                int lr = Color.red(maskColor);
-                int lg = Color.green(maskColor);
-                int lb = Color.blue(maskColor);
+                ConfigStore.SmoothGradientSpec capSpec = ConfigStore.buildSmoothGradient(
+                        maskColor, scrimA, effGradStart, effGradEnd, effGradMid);
+                capsuleClip.reset();
+                capsuleClip.addRoundRect(capsuleRect, capR, capR, Path.Direction.CW);
+                canvas.save();
+                canvas.clipPath(capsuleClip);
+                LinearGradient capGrad = new LinearGradient(
+                        0f, capsuleRect.top, 0f, capsuleRect.bottom,
+                        capSpec.colors,
+                        capSpec.positions,
+                        Shader.TileMode.CLAMP);
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.argb(scrimA, lr, lg, lb));
-                canvas.drawRoundRect(capsuleRect, capR, capR, paint);
+                paint.setDither(true);
+                paint.setShader(capGrad);
+                canvas.drawRect(capsuleRect, paint);
+                paint.setShader(null);
+                paint.setDither(false);
+                canvas.restore();
             }
         }
 

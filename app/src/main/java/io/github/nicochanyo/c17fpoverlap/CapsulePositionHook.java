@@ -14,6 +14,17 @@ public final class CapsulePositionHook {
 
     public static volatile Boolean hasFp = null;
 
+    private static volatile Method sHaveFpM;
+    private static volatile Object sFpInstance;
+    private static volatile Method sGetIconMarginBottomM;
+    private static volatile Method sGetPressedIconSizeM;
+    private static volatile Object sCapsuleCfgInstance;
+    private static volatile Method sGetItemHeightM;
+    private static volatile int sLastLoggedOrig = Integer.MIN_VALUE;
+    private static volatile int sLastLoggedTarget = Integer.MIN_VALUE;
+    private static volatile Boolean sLastLoggedHasFp;
+    private static volatile int sLastLoggedMarginKey = Integer.MIN_VALUE;
+
     private CapsulePositionHook() {
     }
 
@@ -32,8 +43,16 @@ public final class CapsulePositionHook {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
                             try {
-                                Method haveFp = param.thisObject.getClass().getMethod("haveFp");
-                                Object res = haveFp.invoke(param.thisObject);
+                                Object self = param.thisObject;
+                                if (self == null) {
+                                    return;
+                                }
+                                Method haveFp = sHaveFpM;
+                                if (haveFp == null || !haveFp.getDeclaringClass().isInstance(self)) {
+                                    haveFp = self.getClass().getMethod("haveFp");
+                                    sHaveFpM = haveFp;
+                                }
+                                Object res = haveFp.invoke(self);
                                 if (res instanceof Boolean) {
                                     hasFp = (Boolean) res;
                                 }
@@ -46,6 +65,16 @@ public final class CapsulePositionHook {
             cfg.note("hook updateCapsulePosition (haveFp) OK");
         } catch (Throwable t) {
             cfg.note("hook updateCapsulePosition failed: " + t);
+        }
+    }
+
+    private static void notePositionDecision(ConfigStore.HookConfig cfg, int orig, int target, Boolean fp, String msg) {
+        if (sLastLoggedOrig != orig || sLastLoggedTarget != target
+                || (fp == null ? sLastLoggedHasFp != null : !fp.equals(sLastLoggedHasFp))) {
+            sLastLoggedOrig = orig;
+            sLastLoggedTarget = target;
+            sLastLoggedHasFp = fp;
+            cfg.note(msg);
         }
     }
 
@@ -63,14 +92,16 @@ public final class CapsulePositionHook {
                                 int orig = ((Number) param.args[0]).intValue();
                                 Boolean fp = hasFp;
                                 if (Boolean.FALSE.equals(fp)) {
-                                    cfg.note("updatePosition(" + orig + ") kept (fp unlock disabled)");
+                                    notePositionDecision(cfg, orig, orig, fp,
+                                            "updatePosition(" + orig + ") kept (fp unlock disabled)");
                                     return;
                                 }
 
                                 boolean align = cfg.isAlignEnabled();
                                 int offset = cfg.getUserOffset();
                                 if (!align && offset == 0) {
-                                    cfg.note("updatePosition(" + orig + ") kept (system stock)");
+                                    notePositionDecision(cfg, orig, orig, fp,
+                                            "updatePosition(" + orig + ") kept (system stock)");
                                     return;
                                 }
 
@@ -78,17 +109,19 @@ public final class CapsulePositionHook {
                                 if (align) {
                                     target = computeTargetMargin(cl, offset, cfg);
                                     if (target < 0) {
-                                        cfg.note("updatePosition(" + orig + ") kept (calc failed)");
+                                        notePositionDecision(cfg, orig, orig, fp,
+                                                "updatePosition(" + orig + ") kept (calc failed)");
                                         return;
                                     }
                                 } else {
                                     target = orig + offset;
                                 }
 
-                                cfg.note("updatePosition(" + orig + ") -> " + target
-                                        + " (hasFp=" + fp
-                                        + " align=" + align
-                                        + " offset=" + offset + ")");
+                                notePositionDecision(cfg, orig, target, fp,
+                                        "updatePosition(" + orig + ") -> " + target
+                                                + " (hasFp=" + fp
+                                                + " align=" + align
+                                                + " offset=" + offset + ")");
                                 param.args[0] = target;
                             } catch (Throwable t) {
                                 cfg.note("capsule hook error: " + t);
@@ -104,14 +137,31 @@ public final class CapsulePositionHook {
 
     private static int computeTargetMargin(ClassLoader cl, int userOffset, ConfigStore.HookConfig cfg) {
         try {
-            Class<?> fpCls = cl.loadClass(FP_UTILS);
-            Object fpInstance = fpCls.getField("INSTANCE").get(null);
-            int fpMargin = ((Number) fpCls.getMethod("getIconMarginBottom").invoke(fpInstance)).intValue();
-            int pressed = ((Number) fpCls.getMethod("getPressedIconSize").invoke(fpInstance)).intValue();
+            Object fpInstance = sFpInstance;
+            Method getMarginM = sGetIconMarginBottomM;
+            Method getPressedM = sGetPressedIconSizeM;
+            if (fpInstance == null || getMarginM == null || getPressedM == null) {
+                Class<?> fpCls = cl.loadClass(FP_UTILS);
+                fpInstance = fpCls.getField("INSTANCE").get(null);
+                getMarginM = fpCls.getMethod("getIconMarginBottom");
+                getPressedM = fpCls.getMethod("getPressedIconSize");
+                sFpInstance = fpInstance;
+                sGetIconMarginBottomM = getMarginM;
+                sGetPressedIconSizeM = getPressedM;
+            }
+            int fpMargin = ((Number) getMarginM.invoke(fpInstance)).intValue();
+            int pressed = ((Number) getPressedM.invoke(fpInstance)).intValue();
 
-            Class<?> cfgCls = cl.loadClass(CAPSULE_CONFIG);
-            Object cfgInstance = cfgCls.getField("INSTANCE").get(null);
-            int item = ((Number) cfgCls.getMethod("getItemHeight").invoke(cfgInstance)).intValue();
+            Object cfgInstance = sCapsuleCfgInstance;
+            Method getItemM = sGetItemHeightM;
+            if (cfgInstance == null || getItemM == null) {
+                Class<?> cfgCls = cl.loadClass(CAPSULE_CONFIG);
+                cfgInstance = cfgCls.getField("INSTANCE").get(null);
+                getItemM = cfgCls.getMethod("getItemHeight");
+                sCapsuleCfgInstance = cfgInstance;
+                sGetItemHeightM = getItemM;
+            }
+            int item = ((Number) getItemM.invoke(cfgInstance)).intValue();
 
             if (fpMargin <= 0 || pressed <= 0 || item <= 0) {
                 return -1;
@@ -119,13 +169,17 @@ public final class CapsulePositionHook {
 
             int fpCenter = fpMargin - (pressed / 2);
             int target = fpCenter - (item / 2) + RAISE_OFFSET + userOffset;
-            cfg.note("fp margin=" + fpMargin
-                    + " pressed=" + pressed
-                    + " item=" + item
-                    + " fpCenter=" + fpCenter
-                    + " raise=" + RAISE_OFFSET
-                    + " user=" + userOffset
-                    + " target=" + target);
+            int marginKey = ((fpMargin * 31 + pressed) * 31 + item) * 31 + target;
+            if (marginKey != sLastLoggedMarginKey) {
+                sLastLoggedMarginKey = marginKey;
+                cfg.note("fp margin=" + fpMargin
+                        + " pressed=" + pressed
+                        + " item=" + item
+                        + " fpCenter=" + fpCenter
+                        + " raise=" + RAISE_OFFSET
+                        + " user=" + userOffset
+                        + " target=" + target);
+            }
             return target;
         } catch (Throwable t) {
             cfg.note("computeTargetMargin failed: " + t);

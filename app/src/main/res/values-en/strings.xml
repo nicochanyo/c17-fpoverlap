@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">Module Active</string>
     <string name="status_title_inactive">Module Inactive</string>
-    <string name="status_sub_active">v1.0.8 (1008) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.0 (1100) · com.android.systemui</string>
     <string name="status_sub_inactive">Enable System UI in LSPosed and reboot</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.0.8</string>
+    <string name="chip_version">v1.1.0</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -63,6 +63,8 @@
     <string name="pref_fc_island_opacity_hint" formatted="false">0% clear, 100% default background</string>
     <string name="pref_fc_opacity_title">Lockscreen Opacity</string>
     <string name="pref_fc_opacity_hint" formatted="false">0% clear, 100% system default</string>
+    <string name="pref_fc_immersive_opacity_title">Music Lockscreen Backdrop Opacity</string>
+    <string name="pref_fc_immersive_opacity_hint" formatted="false">0% clear, 100% system default</string>
     <string name="pref_fc_blur_title">Blur Strength</string>
     <string name="pref_fc_bottom_glow_title">Large Media Highlight Brightness</string>
     <string name="pref_fc_bottom_glow_hint" formatted="false">0% default, up to 200% brighter</string>
@@ -86,13 +88,24 @@
     <string name="pref_fc_mask_chroma_hint" formatted="false">0% dark gray, 100% vivid color</string>
     <string name="pref_fc_mask_strength_title">Media Mask Opacity</string>
     <string name="pref_fc_mask_strength_hint" formatted="false">0% hidden, 100% default, up to 200% stronger</string>
-    <string name="pref_fc_non_media_mask_opacity_title">Non-Media Mask Opacity</string>
-    <string name="pref_fc_non_media_mask_opacity_hint" formatted="false">Adjust mask opacity for timer, hotspot &amp; other cards (0% ~ 200%)</string>
+    <string name="pref_fc_non_media_mask_opacity_title">Non-Media Mask Opacity (Default)</string>
+    <string name="pref_fc_non_media_mask_opacity_hint" formatted="false">Mask opacity when Follow Media is off (0% – 200%)</string>
+    <string name="pref_fc_non_media_follow_mask_opacity_title">Non-Media Mask Opacity (Follow Media)</string>
+    <string name="pref_fc_non_media_follow_mask_opacity_hint" formatted="false">Mask opacity when Follow Media is on (0% – 200%)</string>
     <string name="pref_fc_non_media_mask_title">Tint Non-Media Cards with Media</string>
     <string name="pref_fc_non_media_mask_summary">Apply album art color to non-media card masks (if not removed) &amp; highlights</string>
     <string name="pref_fc_non_media_mask_color_title">Custom Non-Media Mask Color</string>
     <string name="pref_fc_non_media_mask_color_summary">Tap to pick a fixed mask color</string>
     <string name="label_stock_mask">System Default</string>
+    <string name="group_fc_mask_gradient">Gradient Mask Template (Shared)</string>
+    <string name="pref_fc_mask_grad_start_title">Gradient Start</string>
+    <string name="pref_fc_mask_grad_start_hint" formatted="false">0% – 90%, default 0% (at least 10% below End)</string>
+    <string name="pref_fc_mask_grad_end_title">Gradient End</string>
+    <string name="pref_fc_mask_grad_end_hint" formatted="false">10% – 100%, default 80% (at least 10% above Start)</string>
+    <string name="pref_fc_mask_grad_mid_title">Gradient Midpoint</string>
+    <string name="pref_fc_mask_grad_mid_hint" formatted="false">15% – 85%, default 50%</string>
+    <string name="pref_fc_mask_grad_strength_title">Gradient Strength</string>
+    <string name="pref_fc_mask_grad_strength_hint" formatted="false">0% – 200%, default 100%</string>
 
     <string name="group_fc_opacity_cards">Card Opacity</string>
     <string name="group_fc_opacity_blur">Background Blur</string>
@@ -107,7 +120,7 @@
     <string name="menu_fc_masks_title">Mask Settings</string>
     <string name="menu_fc_masks_summary">Remove black gradient masks or tint from cover art</string>
     <string name="menu_fc_tint_title">Card Color</string>
-    <string name="summary_fc_opacity_blur_fmt" formatted="false">Island %d%% · Lock %d%% · Blur %d%%</string>
+    <string name="summary_fc_opacity_blur_fmt" formatted="false">Island %d%% · Lock %d%% · Music %d%% · Blur %d%%</string>
     <string name="summary_fc_highlight_fmt" formatted="false">Large %d%%/%d%% · Single %d%%/%d%%</string>
     <string name="summary_fc_masks_media">Tinted by media cover</string>
     <string name="summary_fc_masks_removed_fmt" formatted="false">%d masks removed</string>
@@ -173,6 +186,10 @@
     <string name="btn_update_open_repo">Open Repo</string>
     <string name="dialog_changelog_title">Changelog</string>
     <string name="btn_close">Close</string>
+    <string name="changelog_v110_title">v1.1.0</string>
+    <string name="changelog_v110_body" formatted="false">• Fixed lockscreen media card mask snapping out when expanding into Music Lockscreen; now fades smoothly with expansion progress\n• Split Music Lockscreen backdrop opacity into an independent control (0% – 100%)\n• Replaced piecewise mask stops with a C2-smooth gradient + dithering and added linked Start/End/Midpoint bounds\n• Scoped non-media &amp; notification follow-media tinting strictly to surfaces with an active media Fluid Cloud\n• Eliminated v1.0.9 lag &amp; frame drops via draw caches, probe throttling, and coalesced config reloads</string>
+    <string name="changelog_v109_title">v1.0.9</string>
+    <string name="changelog_v109_body" formatted="false">• Split non-media mask opacity into independent Follow-Media ON and OFF sliders (0% – 200%)\n• Unified mask concentration naming to Opacity\n• Added shared Gradient Mask Template controls across all masks (Start, End, Midpoint, Strength)</string>
     <string name="changelog_v108_title">v1.0.8</string>
     <string name="changelog_v108_body" formatted="false">• Upgraded to ColorOS 17 UI &amp; motion: collapsing large header, top gradient blur, and overscroll bounce\n• Redesigned menus and dialogs into floating bottom sheets, centered cards, and anchored popups\n• Fixed remote update changelog line breaks, Markdown headings, and Unicode formatting</string>
     <string name="changelog_v107_title">v1.0.7</string>

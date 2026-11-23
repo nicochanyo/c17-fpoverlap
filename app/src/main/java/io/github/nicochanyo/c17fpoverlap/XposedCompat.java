@@ -20,6 +20,7 @@ import io.github.libxposed.api.XposedModule;
  */
 public final class XposedCompat {
     private static final String LOG_TAG = "C17Opt";
+    private static final Object[] EMPTY_ARGS = new Object[0];
     private static volatile XposedModule sModule;
 
     private XposedCompat() {
@@ -105,9 +106,57 @@ public final class XposedCompat {
         }
     }
 
+    private static boolean isBlockedBootClass(Executable exec) {
+        if (exec == null) {
+            return true;
+        }
+        String cn = exec.getDeclaringClass().getName();
+        return cn.startsWith("android.")
+                || cn.startsWith("java.")
+                || cn.startsWith("javax.")
+                || cn.startsWith("com.android.internal.");
+    }
+
+    public static Method findDeclaredMethod(Class<?> cls, String name, Class<?>... params) {
+        if (cls == null || name == null) {
+            return null;
+        }
+        try {
+            Method m = cls.getDeclaredMethod(name, params);
+            if (!Modifier.isAbstract(m.getModifiers())) {
+                m.setAccessible(true);
+                return m;
+            }
+        } catch (NoSuchMethodException ignored) {
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    public static XposedInterface.HookHandle hookDirect(Executable hookMethod, XposedInterface.Hooker hooker) {
+        XposedModule module = sModule;
+        if (module == null || hookMethod == null || hooker == null) {
+            return null;
+        }
+        if (isBlockedBootClass(hookMethod)) {
+            log("BLOCKED boot-framework hook: "
+                    + hookMethod.getDeclaringClass().getName() + "#" + hookMethod.getName());
+            return null;
+        }
+        hookMethod.setAccessible(true);
+        return module.hook(hookMethod)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(hooker);
+    }
+
     public static XposedInterface.HookHandle hookMethod(Executable hookMethod, final XC_MethodHook callback) {
         XposedModule module = sModule;
         if (module == null || hookMethod == null || callback == null) {
+            return null;
+        }
+        if (isBlockedBootClass(hookMethod)) {
+            log("BLOCKED boot-framework hook: "
+                    + hookMethod.getDeclaringClass().getName() + "#" + hookMethod.getName());
             return null;
         }
         hookMethod.setAccessible(true);
@@ -121,8 +170,8 @@ public final class XposedCompat {
                         param.thisObject = chain.getThisObject();
                         List<Object> argList = chain.getArgs();
                         param.args = (argList != null && !argList.isEmpty())
-                                ? argList.toArray(new Object[0])
-                                : new Object[0];
+                                ? argList.toArray(EMPTY_ARGS)
+                                : EMPTY_ARGS;
 
                         callback.beforeHookedMethod(param);
                         if (!param.returnEarly) {

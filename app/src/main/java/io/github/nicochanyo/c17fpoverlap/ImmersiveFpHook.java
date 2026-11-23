@@ -16,14 +16,18 @@ public final class ImmersiveFpHook {
     private static final String CLS_FP_CTRL = "com.oplus.systemui.biometrics.finger.udfps.OnScreenFpControl";
     private static final String CLS_IMMERSIVE_TOUCH = "com.oplus.systemui.notification.lockscreen.immersive.OplusImmersiveTouchHandler";
     private static final String CLS_UPDATE_ALPHA_RUNNABLE = "com.oplus.systemui.biometrics.finger.udfps.OnScreenFingerprintUiMech$updateFpIconAlpha$1";
-    private static final String CLS_AOD_UTIL = "com.oplus.systemui.aod.display.AODDisplayUtil";
     private static final String CLS_EXT_STATE_COLLECTOR = "com.oplus.systemui.biometrics.OplusBiometricAuthController$1$1";
 
     private static volatile Object sBioAuthController;
     private static volatile Method sIsFpIconVisibleMethod;
     private static volatile Method sIsInFingerViewAreaMethod;
-
-    private static final ThreadLocal<Boolean> IN_SHOW_FP_ANIM = new ThreadLocal<>();
+    private static volatile Method sGetNewStateM;
+    private static volatile Field sThis0Field;
+    private static volatile Field sExtLazyField;
+    private static volatile Method sLazyGetM;
+    private static volatile Method sGetExtStateEventM;
+    private static volatile Method sGetValueM;
+    private static volatile Field sNewStateField;
 
     private static final Map<Object, Boolean> IGNORING_FP_TOUCH =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -191,35 +195,93 @@ public final class ImmersiveFpHook {
     private static void hookPanoramaImmersedGuard(ClassLoader cl, final ConfigStore.HookConfig cfg) {
         try {
             Class<?> runnableCls = XposedCompat.findClassIfExists(CLS_UPDATE_ALPHA_RUNNABLE, cl);
-            Class<?> aodUtilCls = XposedCompat.findClassIfExists(CLS_AOD_UTIL, cl);
-            if (runnableCls == null || aodUtilCls == null) {
+            if (runnableCls == null) {
                 cfg.note("hook PanoramaImmersedGuard skipped: class missing");
                 return;
             }
-            Method runMethod = findMethod(runnableCls, "run");
-            Method isPanoMethod = findMethod(aodUtilCls, "isPanoramicProcessType");
-            if (runMethod == null || isPanoMethod == null) {
+            Method runMethod = XposedCompat.findDeclaredMethod(runnableCls, "run");
+            if (runMethod == null) {
                 cfg.note("hook PanoramaImmersedGuard skipped: method missing");
                 return;
             }
+            sThis0Field = findField(runnableCls, "this$0");
             XposedCompat.hookMethod(runMethod, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
-                    if (cfg.isImmersiveFpEnabled()) {
-                        IN_SHOW_FP_ANIM.set(Boolean.TRUE);
+                    if (!cfg.isImmersiveFpEnabled() || param.thisObject == null) {
+                        return;
+                    }
+                    try {
+                        Field fThis0 = sThis0Field;
+                        if (fThis0 == null || !fThis0.getDeclaringClass().isInstance(param.thisObject)) {
+                            fThis0 = findField(param.thisObject.getClass(), "this$0");
+                            sThis0Field = fThis0;
+                        }
+                        Object uiMech = fThis0 != null ? fThis0.get(param.thisObject) : null;
+                        if (uiMech == null) {
+                            return;
+                        }
+                        Field fLazy = sExtLazyField;
+                        if (fLazy == null || !fLazy.getDeclaringClass().isInstance(uiMech)) {
+                            fLazy = findField(uiMech.getClass(), "lockScreenExtStateControllerLazy");
+                            sExtLazyField = fLazy;
+                        }
+                        Object lazy = fLazy != null ? fLazy.get(uiMech) : null;
+                        if (lazy == null) {
+                            return;
+                        }
+                        Method mGet = sLazyGetM;
+                        if (mGet == null || !mGet.getDeclaringClass().isInstance(lazy)) {
+                            mGet = findMethod(lazy.getClass(), "get");
+                            sLazyGetM = mGet;
+                        }
+                        Object extCtrl = mGet != null ? mGet.invoke(lazy) : null;
+                        if (extCtrl == null) {
+                            return;
+                        }
+                        Method mEv = sGetExtStateEventM;
+                        if (mEv == null || !mEv.getDeclaringClass().isInstance(extCtrl)) {
+                            mEv = findMethod(extCtrl.getClass(), "getExtStateEvent");
+                            sGetExtStateEventM = mEv;
+                        }
+                        Object flow = mEv != null ? mEv.invoke(extCtrl) : null;
+                        if (flow == null) {
+                            return;
+                        }
+                        Method mVal = sGetValueM;
+                        if (mVal == null || !mVal.getDeclaringClass().isInstance(flow)) {
+                            mVal = findMethod(flow.getClass(), "getValue");
+                            sGetValueM = mVal;
+                        }
+                        Object event = mVal != null ? mVal.invoke(flow) : null;
+                        if (event == null) {
+                            return;
+                        }
+                        Field fState = sNewStateField;
+                        if (fState == null || !fState.getDeclaringClass().isInstance(event)) {
+                            fState = findField(event.getClass(), "newState");
+                            sNewStateField = fState;
+                        }
+                        if (fState != null && fState.getInt(event) == 2) {
+                            fState.setInt(event, 0);
+                            param.setObjectExtra("restoredExtEvent", event);
+                        }
+                    } catch (Throwable ignored) {
                     }
                 }
 
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
-                    IN_SHOW_FP_ANIM.remove();
-                }
-            });
-            XposedCompat.hookMethod(isPanoMethod, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    if (Boolean.TRUE.equals(IN_SHOW_FP_ANIM.get()) && cfg.isImmersiveFpEnabled()) {
-                        param.setResult(Boolean.FALSE);
+                    Object event = param.getObjectExtra("restoredExtEvent");
+                    if (event == null) {
+                        return;
+                    }
+                    try {
+                        Field fState = sNewStateField;
+                        if (fState != null) {
+                            fState.setInt(event, 2);
+                        }
+                    } catch (Throwable ignored) {
                     }
                 }
             });
@@ -245,8 +307,13 @@ public final class ImmersiveFpHook {
                         return;
                     }
                     try {
-                        Method m = param.args[0].getClass().getMethod("getNewState");
-                        Object state = m.invoke(param.args[0]);
+                        Object arg0 = param.args[0];
+                        Method m = sGetNewStateM;
+                        if (m == null || !m.getDeclaringClass().isInstance(arg0)) {
+                            m = arg0.getClass().getMethod("getNewState");
+                            sGetNewStateM = m;
+                        }
+                        Object state = m.invoke(arg0);
                         if (state instanceof Integer && ((Integer) state) == 2 && unitInstance != null) {
                             param.setResult(unitInstance);
                         }

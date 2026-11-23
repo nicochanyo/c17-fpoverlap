@@ -187,6 +187,8 @@ public class MainActivity extends Activity {
     private SeekBar sbFcIslandOpacity;
     private TextView tvFcOpacityVal;
     private SeekBar sbFcOpacity;
+    private TextView tvFcImmersiveOpacityVal;
+    private SeekBar sbFcImmersiveOpacity;
     private TextView tvFcBlurVal;
     private SeekBar sbFcBlur;
     private TextView tvFcBottomGlowVal;
@@ -210,7 +212,17 @@ public class MainActivity extends Activity {
     private SeekBar sbFcMaskChroma;
     private TextView tvFcNonMediaMaskOpacityVal;
     private SeekBar sbFcNonMediaMaskOpacity;
+    private TextView tvFcNonMediaFollowMaskOpacityVal;
+    private SeekBar sbFcNonMediaFollowMaskOpacity;
     private Switch swFcNonMediaMaskEnabled;
+    private TextView tvFcMaskGradStartVal;
+    private SeekBar sbFcMaskGradStart;
+    private TextView tvFcMaskGradEndVal;
+    private SeekBar sbFcMaskGradEnd;
+    private TextView tvFcMaskGradMidVal;
+    private SeekBar sbFcMaskGradMid;
+    private TextView tvFcMaskGradStrengthVal;
+    private SeekBar sbFcMaskGradStrength;
     private Switch swFcFollowStock;
     private View rowFcColor;
     private View vFcSwatch;
@@ -932,6 +944,8 @@ public class MainActivity extends Activity {
         sbFcIslandOpacity = findViewById(R.id.sbFcIslandOpacity);
         tvFcOpacityVal = findViewById(R.id.tvFcOpacityVal);
         sbFcOpacity = findViewById(R.id.sbFcOpacity);
+        tvFcImmersiveOpacityVal = findViewById(R.id.tvFcImmersiveOpacityVal);
+        sbFcImmersiveOpacity = findViewById(R.id.sbFcImmersiveOpacity);
         tvFcBlurVal = findViewById(R.id.tvFcBlurVal);
         sbFcBlur = findViewById(R.id.sbFcBlur);
         tvFcBottomGlowVal = findViewById(R.id.tvFcBottomGlowVal);
@@ -955,7 +969,17 @@ public class MainActivity extends Activity {
         sbFcMaskChroma = findViewById(R.id.sbFcMaskChroma);
         tvFcNonMediaMaskOpacityVal = findViewById(R.id.tvFcNonMediaMaskOpacityVal);
         sbFcNonMediaMaskOpacity = findViewById(R.id.sbFcNonMediaMaskOpacity);
+        tvFcNonMediaFollowMaskOpacityVal = findViewById(R.id.tvFcNonMediaFollowMaskOpacityVal);
+        sbFcNonMediaFollowMaskOpacity = findViewById(R.id.sbFcNonMediaFollowMaskOpacity);
         swFcNonMediaMaskEnabled = findViewById(R.id.swFcNonMediaMaskEnabled);
+        tvFcMaskGradStartVal = findViewById(R.id.tvFcMaskGradStartVal);
+        sbFcMaskGradStart = findViewById(R.id.sbFcMaskGradStart);
+        tvFcMaskGradEndVal = findViewById(R.id.tvFcMaskGradEndVal);
+        sbFcMaskGradEnd = findViewById(R.id.sbFcMaskGradEnd);
+        tvFcMaskGradMidVal = findViewById(R.id.tvFcMaskGradMidVal);
+        sbFcMaskGradMid = findViewById(R.id.sbFcMaskGradMid);
+        tvFcMaskGradStrengthVal = findViewById(R.id.tvFcMaskGradStrengthVal);
+        sbFcMaskGradStrength = findViewById(R.id.sbFcMaskGradStrength);
         swFcFollowStock = findViewById(R.id.swFcFollowStock);
         rowFcColor = findViewById(R.id.rowFcColor);
         vFcSwatch = findViewById(R.id.vFcSwatch);
@@ -1036,6 +1060,27 @@ public class MainActivity extends Activity {
                     return;
                 }
                 data.fcOpacity = ConfigStore.clampOpacity(progress);
+                persistSliderTick();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                mainHandler.removeCallbacks(debouncedSync);
+                syncRemoteAsync();
+            }
+        });
+
+        sbFcImmersiveOpacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressUiCallbacks) {
+                    return;
+                }
+                data.fcImmersiveOpacity = ConfigStore.clampOpacity(progress);
                 persistSliderTick();
             }
 
@@ -1192,6 +1237,27 @@ public class MainActivity extends Activity {
                             @Override
                             public void onValueEntered(int value) {
                                 data.fcOpacity = ConfigStore.clampOpacity(value);
+                                persistImmediate();
+                            }
+                        });
+            }
+        });
+        tvFcImmersiveOpacityVal.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!data.fcEnabled) {
+                    return;
+                }
+                showSliderInputDialog(
+                        R.string.pref_fc_immersive_opacity_title,
+                        data.fcImmersiveOpacity,
+                        0,
+                        100,
+                        "%",
+                        new OnValueInputListener() {
+                            @Override
+                            public void onValueEntered(int value) {
+                                data.fcImmersiveOpacity = ConfigStore.clampOpacity(value);
                                 persistImmediate();
                             }
                         });
@@ -1429,47 +1495,23 @@ public class MainActivity extends Activity {
                 R.string.pref_fc_mask_chroma_title,
                 false);
 
-        sbFcNonMediaMaskOpacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (!fromUser || suppressUiCallbacks) {
-                    return;
-                }
-                data.fcNonMediaMaskOpacity = ConfigStore.clampMaskStrength(progress);
-                persistSliderTick();
-            }
+        attachNonMediaMaskOpacitySlider(
+                sbFcNonMediaMaskOpacity,
+                tvFcNonMediaMaskOpacityVal,
+                R.string.pref_fc_non_media_mask_opacity_title,
+                false);
+        attachNonMediaMaskOpacitySlider(
+                sbFcNonMediaFollowMaskOpacity,
+                tvFcNonMediaFollowMaskOpacityVal,
+                R.string.pref_fc_non_media_follow_mask_opacity_title,
+                true);
 
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                mainHandler.removeCallbacks(debouncedSync);
-                syncRemoteAsync();
-            }
-        });
-        tvFcNonMediaMaskOpacityVal.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (!data.fcEnabled) {
-                    return;
-                }
-                showSliderInputDialog(
-                        R.string.pref_fc_non_media_mask_opacity_title,
-                        data.fcNonMediaMaskOpacity,
-                        0,
-                        ConfigStore.MAX_FC_MASK_STRENGTH,
-                        "%",
-                        new OnValueInputListener() {
-                            @Override
-                            public void onValueEntered(int value) {
-                                data.fcNonMediaMaskOpacity = ConfigStore.clampMaskStrength(value);
-                                persistImmediate();
-                            }
-                        });
-            }
-        });
+        attachMaskTemplateSlider(sbFcMaskGradStart, tvFcMaskGradStartVal, R.string.pref_fc_mask_grad_start_title, 100, 0);
+        attachMaskTemplateSlider(sbFcMaskGradEnd, tvFcMaskGradEndVal, R.string.pref_fc_mask_grad_end_title, 100, 1);
+        attachMaskTemplateSlider(sbFcMaskGradMid, tvFcMaskGradMidVal, R.string.pref_fc_mask_grad_mid_title, 100, 2);
+        attachMaskTemplateSlider(
+                sbFcMaskGradStrength, tvFcMaskGradStrengthVal, R.string.pref_fc_mask_grad_strength_title,
+                ConfigStore.MAX_FC_MASK_STRENGTH, 3);
 
         findViewById(R.id.rowFcNonMediaMaskToggle).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1538,6 +1580,7 @@ public class MainActivity extends Activity {
                 ConfigStore.SettingsData def = ConfigStore.createDefaults();
                 data.fcEnabled = def.fcEnabled;
                 data.fcOpacity = def.fcOpacity;
+                data.fcImmersiveOpacity = def.fcImmersiveOpacity;
                 data.fcIslandOpacity = def.fcIslandOpacity;
                 data.fcBlur = def.fcBlur;
                 data.fcBottomGlow = def.fcBottomGlow;
@@ -1554,9 +1597,14 @@ public class MainActivity extends Activity {
                 data.fcMaskChroma = def.fcMaskChroma;
                 data.fcMaskStrength = def.fcMaskStrength;
                 data.fcNonMediaMaskOpacity = def.fcNonMediaMaskOpacity;
+                data.fcNonMediaFollowMaskOpacity = def.fcNonMediaFollowMaskOpacity;
                 data.fcNonMediaMaskEnabled = def.fcNonMediaMaskEnabled;
                 data.fcNonMediaMaskColor = def.fcNonMediaMaskColor;
                 data.fcNonMediaMaskLastColor = def.fcNonMediaMaskLastColor;
+                data.fcMaskGradStart = def.fcMaskGradStart;
+                data.fcMaskGradEnd = def.fcMaskGradEnd;
+                data.fcMaskGradMid = def.fcMaskGradMid;
+                data.fcMaskGradStrength = def.fcMaskGradStrength;
                 persistImmediate();
                 Toast.makeText(MainActivity.this, R.string.toast_reset_done, Toast.LENGTH_SHORT).show();
             }
@@ -1598,7 +1646,7 @@ public class MainActivity extends Activity {
         chip.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (!data.fcEnabled || !data.fcMaskFollowMedia) {
+                if (!data.fcEnabled || (!data.fcMaskFollowMedia && !data.fcNonMediaMaskEnabled)) {
                     return;
                 }
                 int cur = isBrightness ? data.fcMaskBrightness : data.fcMaskChroma;
@@ -1616,6 +1664,140 @@ public class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private void attachNonMediaMaskOpacitySlider(SeekBar sb, TextView chip,
+                                                 final int titleRes, final boolean isFollowMode) {
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressUiCallbacks) {
+                    return;
+                }
+                int clamped = ConfigStore.clampMaskStrength(progress);
+                if (isFollowMode) {
+                    data.fcNonMediaFollowMaskOpacity = clamped;
+                } else {
+                    data.fcNonMediaMaskOpacity = clamped;
+                }
+                persistSliderTick();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                mainHandler.removeCallbacks(debouncedSync);
+                syncRemoteAsync();
+            }
+        });
+        chip.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!data.fcEnabled) {
+                    return;
+                }
+                int cur = isFollowMode ? data.fcNonMediaFollowMaskOpacity : data.fcNonMediaMaskOpacity;
+                showSliderInputDialog(titleRes, cur, 0, ConfigStore.MAX_FC_MASK_STRENGTH, "%",
+                        new OnValueInputListener() {
+                            @Override
+                            public void onValueEntered(int value) {
+                                int clamped = ConfigStore.clampMaskStrength(value);
+                                if (isFollowMode) {
+                                    data.fcNonMediaFollowMaskOpacity = clamped;
+                                } else {
+                                    data.fcNonMediaMaskOpacity = clamped;
+                                }
+                                persistImmediate();
+                            }
+                        });
+            }
+        });
+    }
+
+    private void attachMaskTemplateSlider(SeekBar sb, TextView chip, final int titleRes,
+                                          final int maxVal, final int kind) {
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (!fromUser || suppressUiCallbacks) {
+                    return;
+                }
+                applyMaskTemplateValue(kind, progress);
+                persistSliderTick();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                mainHandler.removeCallbacks(debouncedSync);
+                syncRemoteAsync();
+            }
+        });
+        chip.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!data.fcEnabled) {
+                    return;
+                }
+                int cur = readMaskTemplateValue(kind);
+                int minVal = 0;
+                int effMax = maxVal;
+                if (kind == 0) {
+                    effMax = 100 - ConfigStore.MIN_FC_MASK_GRAD_SPAN;
+                } else if (kind == 1) {
+                    minVal = ConfigStore.MIN_FC_MASK_GRAD_SPAN;
+                } else if (kind == 2) {
+                    minVal = ConfigStore.MIN_FC_MASK_GRAD_MID;
+                    effMax = ConfigStore.MAX_FC_MASK_GRAD_MID;
+                }
+                showSliderInputDialog(titleRes, cur, minVal, effMax, "%", new OnValueInputListener() {
+                    @Override
+                    public void onValueEntered(int value) {
+                        applyMaskTemplateValue(kind, value);
+                        persistImmediate();
+                    }
+                });
+            }
+        });
+    }
+
+    private void applyMaskTemplateValue(int kind, int rawValue) {
+        if (kind == 0) {
+            int s = Math.max(0, Math.min(100 - ConfigStore.MIN_FC_MASK_GRAD_SPAN, rawValue));
+            data.fcMaskGradStart = s;
+            if (data.fcMaskGradEnd < s + ConfigStore.MIN_FC_MASK_GRAD_SPAN) {
+                data.fcMaskGradEnd = s + ConfigStore.MIN_FC_MASK_GRAD_SPAN;
+            }
+        } else if (kind == 1) {
+            int e = Math.max(ConfigStore.MIN_FC_MASK_GRAD_SPAN, Math.min(100, rawValue));
+            data.fcMaskGradEnd = e;
+            if (data.fcMaskGradStart > e - ConfigStore.MIN_FC_MASK_GRAD_SPAN) {
+                data.fcMaskGradStart = e - ConfigStore.MIN_FC_MASK_GRAD_SPAN;
+            }
+        } else if (kind == 2) {
+            data.fcMaskGradMid = ConfigStore.clampMaskGradMid(rawValue);
+        } else {
+            data.fcMaskGradStrength = ConfigStore.clampMaskStrength(rawValue);
+        }
+    }
+
+    private int readMaskTemplateValue(int kind) {
+        if (kind == 0) {
+            return data.fcMaskGradStart;
+        }
+        if (kind == 1) {
+            return data.fcMaskGradEnd;
+        }
+        if (kind == 2) {
+            return data.fcMaskGradMid;
+        }
+        return data.fcMaskGradStrength;
     }
 
     private void toggleFcSubmenu(int targetIdx) {
@@ -2134,6 +2316,8 @@ public class MainActivity extends Activity {
         sheet.card.addView(scroll, scrollLp);
 
         int[] verTitles = new int[]{
+                R.string.changelog_v110_title,
+                R.string.changelog_v109_title,
                 R.string.changelog_v108_title,
                 R.string.changelog_v107_title,
                 R.string.changelog_v106_title,
@@ -2145,6 +2329,8 @@ public class MainActivity extends Activity {
                 R.string.changelog_v100_title
         };
         int[] verBodies = new int[]{
+                R.string.changelog_v110_body,
+                R.string.changelog_v109_body,
                 R.string.changelog_v108_body,
                 R.string.changelog_v107_body,
                 R.string.changelog_v106_body,
@@ -2212,7 +2398,7 @@ public class MainActivity extends Activity {
             //noinspection deprecation
             return pi.versionCode;
         } catch (Throwable ignored) {
-            return 1008;
+            return 1100;
         }
     }
 
@@ -2224,12 +2410,12 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-        return "1.0.8";
+        return "1.1.0";
     }
 
     private static String formatVerLabel(String ver) {
         if (ver == null || ver.trim().isEmpty()) {
-            return "v1.0.8";
+            return "v1.1.0";
         }
         String t = ver.trim();
         if (t.startsWith("v") || t.startsWith("V")) {
@@ -2379,7 +2565,7 @@ public class MainActivity extends Activity {
             out.versionName = !name.isEmpty() ? name : tag;
         }
         if (out.versionName == null || out.versionName.isEmpty()) {
-            out.versionName = "1.0.8";
+            out.versionName = "1.1.0";
         }
     }
 
@@ -3374,6 +3560,10 @@ public class MainActivity extends Activity {
             if (sbFcOpacity.getProgress() != data.fcOpacity) {
                 sbFcOpacity.setProgress(data.fcOpacity);
             }
+            tvFcImmersiveOpacityVal.setText(data.fcImmersiveOpacity + "%");
+            if (sbFcImmersiveOpacity.getProgress() != data.fcImmersiveOpacity) {
+                sbFcImmersiveOpacity.setProgress(data.fcImmersiveOpacity);
+            }
             tvFcBlurVal.setText(data.fcBlur + "%");
             if (sbFcBlur.getProgress() != data.fcBlur) {
                 sbFcBlur.setProgress(data.fcBlur);
@@ -3415,7 +3605,27 @@ public class MainActivity extends Activity {
             if (sbFcNonMediaMaskOpacity.getProgress() != data.fcNonMediaMaskOpacity) {
                 sbFcNonMediaMaskOpacity.setProgress(data.fcNonMediaMaskOpacity);
             }
+            tvFcNonMediaFollowMaskOpacityVal.setText(data.fcNonMediaFollowMaskOpacity + "%");
+            if (sbFcNonMediaFollowMaskOpacity.getProgress() != data.fcNonMediaFollowMaskOpacity) {
+                sbFcNonMediaFollowMaskOpacity.setProgress(data.fcNonMediaFollowMaskOpacity);
+            }
             swFcNonMediaMaskEnabled.setChecked(data.fcNonMediaMaskEnabled);
+            tvFcMaskGradStartVal.setText(data.fcMaskGradStart + "%");
+            if (sbFcMaskGradStart.getProgress() != data.fcMaskGradStart) {
+                sbFcMaskGradStart.setProgress(data.fcMaskGradStart);
+            }
+            tvFcMaskGradEndVal.setText(data.fcMaskGradEnd + "%");
+            if (sbFcMaskGradEnd.getProgress() != data.fcMaskGradEnd) {
+                sbFcMaskGradEnd.setProgress(data.fcMaskGradEnd);
+            }
+            tvFcMaskGradMidVal.setText(data.fcMaskGradMid + "%");
+            if (sbFcMaskGradMid.getProgress() != data.fcMaskGradMid) {
+                sbFcMaskGradMid.setProgress(data.fcMaskGradMid);
+            }
+            tvFcMaskGradStrengthVal.setText(data.fcMaskGradStrength + "%");
+            if (sbFcMaskGradStrength.getProgress() != data.fcMaskGradStrength) {
+                sbFcMaskGradStrength.setProgress(data.fcMaskGradStrength);
+            }
 
             boolean followStock = (data.fcColor == 0);
             swFcFollowStock.setChecked(followStock);
@@ -3432,6 +3642,7 @@ public class MainActivity extends Activity {
                         R.string.summary_fc_opacity_blur_fmt,
                         data.fcIslandOpacity,
                         data.fcOpacity,
+                        data.fcImmersiveOpacity,
                         data.fcBlur));
             }
             if (tvSummaryHighlight != null) {
@@ -3476,7 +3687,12 @@ public class MainActivity extends Activity {
                     data.fcMaskStrength,
                     data.fcNonMediaMaskEnabled,
                     data.fcNonMediaMaskColor,
-                    data.fcNonMediaMaskOpacity
+                    data.fcNonMediaMaskOpacity,
+                    data.fcNonMediaFollowMaskOpacity,
+                    data.fcMaskGradStart,
+                    data.fcMaskGradEnd,
+                    data.fcMaskGradMid,
+                    data.fcMaskGradStrength
             );
         } finally {
             suppressUiCallbacks = false;

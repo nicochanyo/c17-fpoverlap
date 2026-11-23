@@ -9,6 +9,7 @@ import android.view.ViewGroup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.github.nicochanyo.c17fpoverlap.XposedCompat.MethodHookParam;
 import io.github.nicochanyo.c17fpoverlap.XposedCompat.XC_MethodHook;
@@ -36,15 +37,37 @@ public final class FpIconOverlapFadeHook {
 
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final Object SCHED_LOCK = new Object();
+    private static final Object MISSING = new Object();
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> FIELD_CACHE =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> METHOD_CACHE =
+            new ConcurrentHashMap<>();
 
     private static volatile Object sUiMech;
     private static volatile View sCapsuleContainer;
     private static volatile Object sExtStateManager;
     private static volatile Class<?> sCapsuleItemClass;
     private static volatile ClassLoader sClassLoader;
+    private static volatile ConfigStore.HookConfig sCfg;
 
-    private static Runnable sPendingEval;
-    private static Runnable sConfirmEval;
+    private static final Runnable EVAL_RUNNABLE = new Runnable() {
+        @Override
+        public void run() {
+            ConfigStore.HookConfig cfg = sCfg;
+            if (cfg != null) {
+                evaluateOnMainThread(cfg);
+            }
+        }
+    };
+    private static final Runnable CONFIRM_RUNNABLE = new Runnable() {
+        @Override
+        public void run() {
+            ConfigStore.HookConfig cfg = sCfg;
+            if (cfg != null) {
+                evaluateOnMainThread(cfg);
+            }
+        }
+    };
 
     // Accessed strictly on opticalUiUpdateHandler
     private static float sAnimTarget = -1f;
@@ -56,6 +79,7 @@ public final class FpIconOverlapFadeHook {
 
     public static void install(ClassLoader cl, final ConfigStore.HookConfig cfg) {
         sClassLoader = cl;
+        sCfg = cfg;
         sCapsuleItemClass = XposedCompat.findClassIfExists(CLS_CAPSULE_ITEM, cl);
 
         int installed = 0;
@@ -138,7 +162,7 @@ public final class FpIconOverlapFadeHook {
             if (cls == null) {
                 return false;
             }
-            Method mVis = findMethod(cls, "setVisibility", int.class);
+            Method mVis = XposedCompat.findDeclaredMethod(cls, "setVisibility", int.class);
             if (mVis == null) {
                 return false;
             }
@@ -176,11 +200,11 @@ public final class FpIconOverlapFadeHook {
                     }
                 }
             };
-            Method mShow = findMethod(cls, "setShowing", boolean.class);
+            Method mShow = XposedCompat.findDeclaredMethod(cls, "setShowing", boolean.class);
             if (mShow != null) {
                 XposedCompat.hookMethod(mShow, capTrigger);
             }
-            Method mVis = findMethod(cls, "setVisibility", int.class);
+            Method mVis = XposedCompat.findDeclaredMethod(cls, "setVisibility", int.class);
             if (mVis != null) {
                 XposedCompat.hookMethod(mVis, capTrigger);
             }
@@ -239,27 +263,18 @@ public final class FpIconOverlapFadeHook {
     }
 
     private static void scheduleEvaluate(final ConfigStore.HookConfig cfg) {
+        if (sUiMech == null) {
+            return;
+        }
+        if (cfg != null && !cfg.isHideFpOnCapsule() && Boolean.FALSE.equals(sLastShouldHide)) {
+            return;
+        }
+        sCfg = cfg;
         synchronized (SCHED_LOCK) {
-            if (sPendingEval != null) {
-                MAIN_HANDLER.removeCallbacks(sPendingEval);
-            }
-            if (sConfirmEval != null) {
-                MAIN_HANDLER.removeCallbacks(sConfirmEval);
-            }
-            sPendingEval = new Runnable() {
-                @Override
-                public void run() {
-                    evaluateOnMainThread(cfg);
-                }
-            };
-            sConfirmEval = new Runnable() {
-                @Override
-                public void run() {
-                    evaluateOnMainThread(cfg);
-                }
-            };
-            MAIN_HANDLER.post(sPendingEval);
-            MAIN_HANDLER.postDelayed(sConfirmEval, CONFIRM_DELAY_MS);
+            MAIN_HANDLER.removeCallbacks(EVAL_RUNNABLE);
+            MAIN_HANDLER.removeCallbacks(CONFIRM_RUNNABLE);
+            MAIN_HANDLER.post(EVAL_RUNNABLE);
+            MAIN_HANDLER.postDelayed(CONFIRM_RUNNABLE, CONFIRM_DELAY_MS);
         }
     }
 
@@ -577,32 +592,78 @@ public final class FpIconOverlapFadeHook {
     }
 
     private static Field findField(Class<?> cls, String name) {
-        while (cls != null && cls != Object.class) {
+        if (cls == null || name == null) {
+            return null;
+        }
+        ConcurrentHashMap<String, Object> map = FIELD_CACHE.get(cls);
+        if (map == null) {
+            ConcurrentHashMap<String, Object> fresh = new ConcurrentHashMap<>();
+            ConcurrentHashMap<String, Object> prev = FIELD_CACHE.putIfAbsent(cls, fresh);
+            map = prev != null ? prev : fresh;
+        }
+        Object cached = map.get(name);
+        if (cached != null) {
+            return cached == MISSING ? null : (Field) cached;
+        }
+        Field found = null;
+        Class<?> c = cls;
+        while (c != null && c != Object.class) {
             try {
-                Field f = cls.getDeclaredField(name);
+                Field f = c.getDeclaredField(name);
                 f.setAccessible(true);
-                return f;
+                found = f;
+                break;
             } catch (NoSuchFieldException ignored) {
-                cls = cls.getSuperclass();
+                c = c.getSuperclass();
             } catch (Throwable ignored) {
-                return null;
+                break;
             }
         }
-        return null;
+        map.putIfAbsent(name, found != null ? found : MISSING);
+        return found;
     }
 
     private static Method findMethod(Class<?> cls, String name, Class<?>... params) {
-        while (cls != null && cls != Object.class) {
+        if (cls == null || name == null) {
+            return null;
+        }
+        ConcurrentHashMap<String, Object> map = METHOD_CACHE.get(cls);
+        if (map == null) {
+            ConcurrentHashMap<String, Object> fresh = new ConcurrentHashMap<>();
+            ConcurrentHashMap<String, Object> prev = METHOD_CACHE.putIfAbsent(cls, fresh);
+            map = prev != null ? prev : fresh;
+        }
+        String key;
+        if (params == null || params.length == 0) {
+            key = name;
+        } else if (params.length == 1) {
+            key = name + "|" + (params[0] != null ? params[0].getName() : "null");
+        } else {
+            StringBuilder sb = new StringBuilder(name);
+            for (Class<?> p : params) {
+                sb.append('|').append(p != null ? p.getName() : "null");
+            }
+            key = sb.toString();
+        }
+        Object cached = map.get(key);
+        if (cached != null) {
+            return cached == MISSING ? null : (Method) cached;
+        }
+        Method found = null;
+        Class<?> c = cls;
+        while (c != null && c != Object.class) {
             try {
-                Method m = cls.getDeclaredMethod(name, params);
+                Method m = c.getDeclaredMethod(name, params);
                 m.setAccessible(true);
-                return m;
+                found = m;
+                break;
             } catch (NoSuchMethodException ignored) {
-                cls = cls.getSuperclass();
+                c = c.getSuperclass();
             } catch (Throwable ignored) {
-                return null;
+                break;
             }
         }
-        return null;
+        map.putIfAbsent(key, found != null ? found : MISSING);
+        return found;
     }
 }
