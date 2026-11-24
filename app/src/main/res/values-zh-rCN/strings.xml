@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">模块已启用</string>
     <string name="status_title_inactive">模块未启用</string>
-    <string name="status_sub_active">v1.1.0 (1100) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.1 (1101) · com.android.systemui</string>
     <string name="status_sub_inactive">请在 LSPosed 勾选「系统界面」并重启</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.1.0</string>
+    <string name="chip_version">v1.1.1</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -120,6 +120,10 @@
     <string name="menu_fc_masks_title">遮罩设置</string>
     <string name="menu_fc_masks_summary">移除黑色渐变遮罩或跟随封面变色</string>
     <string name="menu_fc_tint_title">卡片底色</string>
+    <string name="cd_navigate_back">返回</string>
+    <string name="page_subtitle_fc_opacity_blur">卡片不透明度 · 背景模糊</string>
+    <string name="page_subtitle_fc_highlight">大媒体卡片 · 单行与普通流体云</string>
+    <string name="page_subtitle_fc_masks">移除黑色遮罩 · 媒体变色 · 渐变参数</string>
     <string name="summary_fc_opacity_blur_fmt" formatted="false">展开 %d%% · 锁屏 %d%% · 音乐 %d%% · 模糊 %d%%</string>
     <string name="summary_fc_highlight_fmt" formatted="false">大卡 %d%%/%d%% · 单行 %d%%/%d%%</string>
     <string name="summary_fc_masks_media">跟随媒体变色</string>
@@ -131,7 +135,11 @@
     <string name="pref_fc_follow_stock_summary">保持原本底色，仅调整透明度与模糊</string>
     <string name="pref_fc_color_title">自定义卡片底色</string>
     <string name="pref_fc_color_summary">点击选色或输入 HEX 色码</string>
+    <string name="pref_fc_custom_color_summary">关闭后跟随系统默认底色</string>
     <string name="label_stock_tint">系统默认</string>
+    <string name="label_color_value">颜色值</string>
+    <string name="dialog_hex_input_hint">输入 6 位 HEX 色码（如 4FC3F7）</string>
+    <string name="dialog_hex_alpha_input_hint">输入 6 或 8 位 HEX 色码（如 FF4FC3F7）</string>
 
     <!-- Color Picker Dialog -->
     <string name="dialog_color_title">自定义卡片底色</string>
@@ -186,6 +194,8 @@
     <string name="btn_update_open_repo">打开仓库页面</string>
     <string name="dialog_changelog_title">更新日志</string>
     <string name="btn_close">关闭</string>
+    <string name="changelog_v111_title">v1.1.1</string>
+    <string name="changelog_v111_body" formatted="false">• 修复开启高光且非媒体遮罩透明度设为 0 时，卡片左右下角高光 R 角不对齐的问题\n• 锁屏/通知栏渐变遮罩与底部高光统一对齐系统 G2 平滑圆角与横向滑动偏移\n• 新增 ColorOS 17 新版界面，并保留经典界面切换选项\n• 外观设置重构为独立二级页面，卡片底色改为可收起色板</string>
     <string name="changelog_v110_title">v1.1.0</string>
     <string name="changelog_v110_body" formatted="false">• 修复锁屏媒体卡展开进入音乐锁屏时遮罩瞬间消失的问题，改为随展开进度平滑淡出\n• 音乐锁屏底色不透明度拆分为独立调节（0% ~ 100%）\n• 渐变遮罩改为 C2 连续平滑曲线并启用抖动，消除中线断层与色带，并加入起点/终点/中线联动限位\n• 修正仅在音乐播放器内播放（顶部未显示媒体胶囊/卡片）时，顶部与通知栏误跟随媒体变色的问题\n• 优化高频绘制缓存与配置重载节流，消除 v1.0.9 卡顿与掉帧</string>
     <string name="changelog_v109_title">v1.0.9</string>
@@ -269,4 +279,23 @@
     <string name="toast_no_root">未获取 Root 权限，请手动重启系统界面</string>
     <string name="toast_reset_done">已恢复默认设置</string>
     <string name="toast_open_link_failed">无法打开链接</string>
+
+    <!-- Living Flow UI -->
+    <string name="about_app_ver_title">APP 版本</string>
+    <string name="cd_quick_actions">快速操作</string>
+    <string name="about_ui_style_title">界面风格</string>
+    <string name="about_ui_style_summary">切换 ColorOS 17 Living Flow 光影新界面或经典界面</string>
+    <string name="ui_style_living_flow">Living Flow</string>
+    <string name="ui_style_living_flow_desc">Living Flow（ColorOS 17 光影流体）</string>
+    <string name="ui_style_classic">经典界面</string>
+    <string name="ui_style_classic_desc">经典界面（保留旧版样式）</string>
+    <string name="lf_software_update_title">软件更新</string>
+    <string name="lf_update_notes_title">更新说明</string>
+    <string name="lf_software_version_label">软件版本</string>
+    <string name="lf_checking_update_status">正在检查更新…</string>
+    <string name="lf_btn_recheck_update">重新检查更新</string>
+    <string name="lf_btn_view_changelog">查看更新说明</string>
+    <string name="about_hero_new_ver_fmt">发现新版本 %1$s</string>
+    <string name="about_hero_module_subtitle">锁屏流体云优化</string>
+    <string name="pref_fc_custom_color_tap_expand">点击展开或收起选色</string>
 </resources>

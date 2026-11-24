@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BlendMode;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
@@ -25,19 +26,23 @@ import android.view.View;
 public class TopGradientBlurView extends View {
     private static final float SOFT_BLUR_DP = 4.5f;
     private static final float STRONG_BLUR_DP = 11.5f;
-    private static final float BLUR_PAD_DP = 20f;
+    private static final float BLUR_PAD_DP = 32f;
     private static final int FALLBACK_DOWNSAMPLE = 8;
 
     private View targetView;
     private boolean isCapturing;
     private int statusBarTopPx;
     private int bgColor;
+    private boolean translucentBackdrop = false;
+    private boolean dynamicBackdrop = false;
 
     // Cached geometry/theme signature for RenderEffects and Shaders
     private int lastW = -1;
     private int lastH = -1;
     private int lastStatusTop = -1;
     private int lastBgColor;
+    private boolean lastTranslucent = false;
+    private boolean lastDynamicBackdrop = false;
 
     // API 31+ GPU RenderNodes
     private RenderNode sourceNode;
@@ -69,6 +74,7 @@ public class TopGradientBlurView extends View {
     }
 
     private void init() {
+        scrimPaint.setDither(true);
         fallbackMaskPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
         refreshThemeSurfaceColor();
     }
@@ -88,12 +94,39 @@ public class TopGradientBlurView extends View {
     }
 
     public void refreshThemeSurfaceColor() {
-        int resolved = ConfigStore.resolveThemeColor(getContext(), R.attr.couiBg, R.color.coui_bg);
-        if (this.bgColor != resolved) {
-            this.bgColor = resolved;
+        try {
+            int resolved = ConfigStore.resolveThemeColor(getContext(), R.attr.couiBg, R.color.coui_bg);
+            if (this.bgColor != resolved || this.translucentBackdrop) {
+                this.bgColor = resolved;
+                this.translucentBackdrop = false;
+                lastW = -1;
+                invalidate();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public void setSurfaceColor(int color) {
+        boolean isTranslucent = Color.alpha(color) == 0;
+        int nextBg = isTranslucent ? (color & 0x00FFFFFF) : color;
+        if (this.translucentBackdrop != isTranslucent || this.bgColor != nextBg) {
+            this.translucentBackdrop = isTranslucent;
+            this.bgColor = nextBg;
             lastW = -1;
             invalidate();
         }
+    }
+
+    public void setDynamicBackdrop(boolean dynamic) {
+        if (this.dynamicBackdrop != dynamic) {
+            this.dynamicBackdrop = dynamic;
+            lastW = -1;
+            invalidate();
+        }
+    }
+
+    public boolean isCapturingTarget() {
+        return isCapturing;
     }
 
     public void notifyTargetInvalidated() {
@@ -133,51 +166,89 @@ public class TopGradientBlurView extends View {
     }
 
     private void ensureShadersAndEffects(int w, int h) {
-        if (w == lastW && h == lastH && statusBarTopPx == lastStatusTop && bgColor == lastBgColor) {
+        if (w == lastW && h == lastH && statusBarTopPx == lastStatusTop
+                && bgColor == lastBgColor && translucentBackdrop == lastTranslucent
+                && dynamicBackdrop == lastDynamicBackdrop) {
             return;
         }
         lastW = w;
         lastH = h;
         lastStatusTop = statusBarTopPx;
         lastBgColor = bgColor;
+        lastTranslucent = translucentBackdrop;
+        lastDynamicBackdrop = dynamicBackdrop;
 
         float d = getResources().getDisplayMetrics().density;
-        float topAnchor = Math.min(h * 0.68f, statusBarTopPx + 34f * d);
+        boolean compactEmbedded = (statusBarTopPx <= 0);
         float fh = h;
+        float fadeBase = compactEmbedded
+                ? 0.30f
+                : Math.min(0.46f, (statusBarTopPx + 16f * d) / fh);
 
-        float[] scrimStops = new float[]{
-                0f,
-                clampPos(statusBarTopPx / fh),
-                clampPos(topAnchor / fh),
-                clampPos((topAnchor + 20f * d) / fh),
-                clampPos((topAnchor + 38f * d) / fh),
-                1f
-        };
-        int rgb = bgColor & 0x00FFFFFF;
-        int[] scrimColors = new int[]{
-                (0x9E << 24) | rgb,
-                (0x82 << 24) | rgb,
-                (0x52 << 24) | rgb,
-                (0x2B << 24) | rgb,
-                (0x0C << 24) | rgb,
-                rgb
-        };
-        scrimPaint.setShader(new LinearGradient(0f, 0f, 0f, fh, scrimColors, scrimStops, Shader.TileMode.CLAMP));
+        if (dynamicBackdrop) {
+            scrimPaint.setShader(null);
+            scrimPaint.setColor(Color.TRANSPARENT);
+        } else {
+            int topAlpha = compactEmbedded
+                    ? (translucentBackdrop ? 0xCC : 0xFA)
+                    : (translucentBackdrop ? 0x78 : 0xAC);
+            float solidFrac = compactEmbedded
+                    ? 0.26f
+                    : Math.min(0.42f, (statusBarTopPx + 10f * d) / fh);
+            int rgb = bgColor & 0x00FFFFFF;
+            final int scrimSteps = 10;
+            float[] scrimStops = new float[2 + scrimSteps];
+            int[] scrimColors = new int[2 + scrimSteps];
+            int startAlpha = Math.round(topAlpha * 0.90f);
+            scrimStops[0] = 0f;
+            scrimColors[0] = (topAlpha << 24) | rgb;
+            scrimStops[1] = clampPos(solidFrac);
+            scrimColors[1] = (startAlpha << 24) | rgb;
+            for (int i = 1; i <= scrimSteps; i++) {
+                float u = i / (float) scrimSteps;
+                float pos = solidFrac + (1f - solidFrac) * u;
+                int a = (i == scrimSteps)
+                        ? 0
+                        : Math.round(startAlpha * 0.5f * (1f + (float) Math.cos(Math.PI * Math.pow(u, 0.85))));
+                scrimStops[1 + i] = ensureMonotonicStop(clampPos(pos), scrimStops[i]);
+                scrimColors[1 + i] = (Math.max(0, Math.min(255, a)) << 24) | rgb;
+            }
+            scrimStops[scrimStops.length - 1] = 1f;
+            scrimColors[scrimColors.length - 1] = rgb;
+
+            scrimPaint.setColor(Color.BLACK);
+            scrimPaint.setShader(new LinearGradient(0f, 0f, 0f, fh, scrimColors, scrimStops, Shader.TileMode.CLAMP));
+        }
 
         if (Build.VERSION.SDK_INT >= 31) {
             float rSoft = Math.max(1f, SOFT_BLUR_DP * d);
             float rStrong = Math.max(1f, STRONG_BLUR_DP * d);
 
-            // Keep soft blur 100% opaque across the upper transition so sharp edges never ghost beneath strongBlur
-            float[] softStops = new float[]{
-                    0f,
-                    clampPos((topAnchor + 26f * d) / fh),
-                    clampPos((topAnchor + 40f * d) / fh),
-                    1f
-            };
-            int[] softMaskColors = new int[]{
-                    0xFFFFFFFF, 0xFFFFFFFF, 0x5CFFFFFF, 0x00FFFFFF
-            };
+            float[] softStops;
+            int[] softMaskColors;
+            float[] strongStops;
+            int[] strongMaskColors;
+            if (dynamicBackdrop) {
+                softStops = new float[] { 0f, 0.46f, 0.64f, 0.82f, 0.94f, 1f };
+                softMaskColors = new int[] {
+                        0x00FFFFFF, 0x00FFFFFF, 0x78FFFFFF, 0xFFFFFFFF, 0x70FFFFFF, 0x00FFFFFF
+                };
+                strongStops = new float[] { 0f, 0.36f, 0.54f, 0.72f, 0.88f, 1f };
+                strongMaskColors = new int[] {
+                        0x00FFFFFF, 0x00FFFFFF, 0xA8FFFFFF, 0xFFFFFFFF, 0x40FFFFFF, 0x00FFFFFF
+                };
+            } else {
+                // Smooth proportional cosine feathering down to exact 0 alpha before y = h
+                float strongStart = fadeBase;
+                float strongEnd = strongStart + (1f - strongStart) * 0.72f;
+                strongStops = buildCosineMaskStops(strongStart, strongEnd, 7);
+                strongMaskColors = buildCosineMaskColors(10);
+
+                float softStart = fadeBase + (1f - fadeBase) * 0.16f;
+                float softEnd = 0.98f;
+                softStops = buildCosineMaskStops(softStart, softEnd, 7);
+                softMaskColors = buildCosineMaskColors(10);
+            }
             LinearGradient softGrad = new LinearGradient(
                     0f, 0f, 0f, fh, softMaskColors, softStops, Shader.TileMode.CLAMP);
             softMaskedEffect = RenderEffect.createBlendModeEffect(
@@ -185,16 +256,6 @@ public class TopGradientBlurView extends View {
                     RenderEffect.createShaderEffect(softGrad),
                     BlendMode.DST_IN);
 
-            float[] strongStops = new float[]{
-                    0f,
-                    clampPos((topAnchor + 4f * d) / fh),
-                    clampPos((topAnchor + 20f * d) / fh),
-                    clampPos((topAnchor + 36f * d) / fh),
-                    1f
-            };
-            int[] strongMaskColors = new int[]{
-                    0xFFFFFFFF, 0xFFFFFFFF, 0x78FFFFFF, 0x00FFFFFF, 0x00FFFFFF
-            };
             LinearGradient strongGrad = new LinearGradient(
                     0f, 0f, 0f, fh, strongMaskColors, strongStops, Shader.TileMode.CLAMP);
             strongMaskedEffect = RenderEffect.createBlendModeEffect(
@@ -209,8 +270,12 @@ public class TopGradientBlurView extends View {
                 strongBlurNode.setRenderEffect(strongMaskedEffect);
             }
         } else {
-            float[] fbStops = new float[]{0f, clampPos(topAnchor / fh), clampPos((topAnchor + 28f * d) / fh), 1f};
-            int[] fbColors = new int[]{0xFFFFFFFF, 0xE6FFFFFF, 0x55FFFFFF, 0x00FFFFFF};
+            float[] fbStops = dynamicBackdrop
+                    ? new float[] { 0f, 0.38f, 0.68f, 0.88f, 1f }
+                    : new float[] { 0f, clampPos(fadeBase), clampPos(fadeBase + (1f - fadeBase) * 0.50f), 0.98f, 1f };
+            int[] fbColors = dynamicBackdrop
+                    ? new int[] { 0x00FFFFFF, 0x00FFFFFF, 0xD8FFFFFF, 0x60FFFFFF, 0x00FFFFFF }
+                    : new int[] { 0xFFFFFFFF, 0xE6FFFFFF, 0x66FFFFFF, 0x00FFFFFF, 0x00FFFFFF };
             fallbackMaskPaint.setShader(new LinearGradient(0f, 0f, 0f, fh, fbColors, fbStops, Shader.TileMode.CLAMP));
         }
     }
@@ -223,9 +288,9 @@ public class TopGradientBlurView extends View {
         int captureH = h + Math.round(BLUR_PAD_DP * d);
 
         if (sourceNode == null) {
-            sourceNode = new RenderNode("C17TopBlurSource");
-            softBlurNode = new RenderNode("C17TopBlurSoft");
-            strongBlurNode = new RenderNode("C17TopBlurStrong");
+            sourceNode = new RenderNode("C17FpTopBlurSource");
+            softBlurNode = new RenderNode("C17FpTopBlurSoft");
+            strongBlurNode = new RenderNode("C17FpTopBlurStrong");
             softBlurNode.setRenderEffect(softMaskedEffect);
             strongBlurNode.setRenderEffect(strongMaskedEffect);
         }
@@ -233,12 +298,17 @@ public class TopGradientBlurView extends View {
         sourceNode.setPosition(0, 0, w, captureH);
         sourceNode.setClipToBounds(true);
 
+        boolean clearTransparent = dynamicBackdrop || translucentBackdrop;
         isCapturing = true;
         try {
             RecordingCanvas srcRc = sourceNode.beginRecording(w, captureH);
-            srcRc.drawColor(bgColor);
-            float dx = targetView.getLeft() - getLeft();
-            float dy = targetView.getTop() - getTop();
+            if (clearTransparent) {
+                srcRc.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            } else {
+                srcRc.drawColor(bgColor);
+            }
+            float dx = targetView.getLeft() - getLeft() + targetView.getTranslationX() - targetView.getScrollX();
+            float dy = targetView.getTop() - getTop() + targetView.getTranslationY() - targetView.getScrollY();
             if (dx != 0f || dy != 0f) {
                 srcRc.translate(dx, dy);
             }
@@ -246,7 +316,9 @@ public class TopGradientBlurView extends View {
             sourceNode.endRecording();
         } catch (Throwable ignored) {
             isCapturing = false;
-            canvas.drawRect(0f, 0f, w, h, scrimPaint);
+            if (!dynamicBackdrop) {
+                canvas.drawRect(0f, 0f, w, h, scrimPaint);
+            }
             return;
         } finally {
             isCapturing = false;
@@ -268,7 +340,9 @@ public class TopGradientBlurView extends View {
         canvas.clipRect(0, 0, w, h);
         canvas.drawRenderNode(softBlurNode);
         canvas.drawRenderNode(strongBlurNode);
-        canvas.drawRect(0f, 0f, w, h, scrimPaint);
+        if (!dynamicBackdrop) {
+            canvas.drawRect(0f, 0f, w, h, scrimPaint);
+        }
         canvas.restoreToCount(sc);
     }
 
@@ -283,13 +357,18 @@ public class TopGradientBlurView extends View {
             fallbackCaptureCanvas = new Canvas(fallbackCaptureBmp);
         }
 
+        boolean clearTransparent = dynamicBackdrop || translucentBackdrop;
         isCapturing = true;
         try {
             fallbackCaptureCanvas.save();
             fallbackCaptureCanvas.scale(1f / FALLBACK_DOWNSAMPLE, 1f / FALLBACK_DOWNSAMPLE);
-            fallbackCaptureCanvas.drawColor(bgColor);
-            float dx = targetView.getLeft() - getLeft();
-            float dy = targetView.getTop() - getTop();
+            if (clearTransparent) {
+                fallbackCaptureCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            } else {
+                fallbackCaptureCanvas.drawColor(bgColor);
+            }
+            float dx = targetView.getLeft() - getLeft() + targetView.getTranslationX() - targetView.getScrollX();
+            float dy = targetView.getTop() - getTop() + targetView.getTranslationY() - targetView.getScrollY();
             if (dx != 0f || dy != 0f) {
                 fallbackCaptureCanvas.translate(dx, dy);
             }
@@ -298,7 +377,9 @@ public class TopGradientBlurView extends View {
             boxBlurInPlace(fallbackCaptureBmp, 4);
         } catch (Throwable ignored) {
             isCapturing = false;
-            canvas.drawRect(0f, 0f, w, h, scrimPaint);
+            if (!dynamicBackdrop) {
+                canvas.drawRect(0f, 0f, w, h, scrimPaint);
+            }
             return;
         } finally {
             isCapturing = false;
@@ -311,7 +392,9 @@ public class TopGradientBlurView extends View {
         canvas.restore();
         canvas.drawRect(0f, 0f, w, h, fallbackMaskPaint);
         canvas.restoreToCount(layer);
-        canvas.drawRect(0f, 0f, w, h, scrimPaint);
+        if (!dynamicBackdrop) {
+            canvas.drawRect(0f, 0f, w, h, scrimPaint);
+        }
     }
 
     private static void boxBlurInPlace(Bitmap bmp, int radius) {
@@ -359,5 +442,39 @@ public class TopGradientBlurView extends View {
 
     private static float clampPos(float v) {
         return Math.max(0f, Math.min(1f, v));
+    }
+
+    private static float ensureMonotonicStop(float candidate, float prev) {
+        return Math.max(prev, Math.min(1f, candidate));
+    }
+
+    private static float[] buildCosineMaskStops(float fadeStart, float fadeEnd, int fadeSteps) {
+        float start = clampPos(fadeStart);
+        float end = Math.max(start, Math.min(0.995f, fadeEnd));
+        float[] stops = new float[2 + fadeSteps + 1];
+        stops[0] = 0f;
+        stops[1] = start;
+        for (int i = 1; i <= fadeSteps; i++) {
+            float u = i / (float) fadeSteps;
+            stops[1 + i] = ensureMonotonicStop(start + (end - start) * u, stops[i]);
+        }
+        stops[stops.length - 1] = 1f;
+        return stops;
+    }
+
+    private static int[] buildCosineMaskColors(int totalCount) {
+        int[] colors = new int[totalCount];
+        colors[0] = 0xFFFFFFFF;
+        colors[1] = 0xFFFFFFFF;
+        int fadeSteps = totalCount - 3;
+        for (int i = 1; i <= fadeSteps; i++) {
+            float u = i / (float) fadeSteps;
+            int a = (i == fadeSteps)
+                    ? 0
+                    : Math.round(255f * 0.5f * (1f + (float) Math.cos(Math.PI * u)));
+            colors[1 + i] = (Math.max(0, Math.min(255, a)) << 24) | 0x00FFFFFF;
+        }
+        colors[totalCount - 1] = 0x00FFFFFF;
+        return colors;
     }
 }

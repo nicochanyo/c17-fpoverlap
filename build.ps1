@@ -85,15 +85,29 @@ Invoke-Checked 'Compile Java sources' {
     & javac -encoding UTF-8 -source 11 -target 11 -Xlint:-options -cp $cp -d (Join-Path $buildDir 'classes') $appSources
 }
 
-# 5. Convert ONLY build\classes to DEX using D8
-$classFiles = @(Get-ChildItem -Path (Join-Path $buildDir 'classes') -Recurse -Filter '*.class' | ForEach-Object { $_.FullName })
+# 5. Convert ONLY build\classes to DEX using D8 (jar first to stay under Windows CLI length limit)
+$classesDir = Join-Path $buildDir 'classes'
+$classesJar = Join-Path $buildDir 'classes.jar'
+if (Test-Path $classesJar) { Remove-Item -Force $classesJar }
+Invoke-Checked 'Package compiled classes for D8' {
+    @"
+import zipfile, os
+root = r'$classesDir'
+with zipfile.ZipFile(r'$classesJar', 'w', zipfile.ZIP_DEFLATED) as zf:
+    for dirpath, _, filenames in os.walk(root):
+        for fn in filenames:
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, root).replace(os.sep, '/')
+            zf.write(full, rel)
+"@ | & python -
+}
 Invoke-Checked 'D8 dex compilation' {
     & java -cp $r8Jar com.android.tools.r8.D8 `
         --release `
         --min-api 26 `
         --lib $androidJar `
         --output (Join-Path $buildDir 'dex') `
-        $classFiles
+        $classesJar
 }
 
 # 6. Insert classes.dex & META-INF/xposed/* into unsigned.apk while preserving resources.arsc as ZIP_STORED

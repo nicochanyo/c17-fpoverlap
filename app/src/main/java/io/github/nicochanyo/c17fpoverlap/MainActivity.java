@@ -3,17 +3,26 @@ package io.github.nicochanyo.c17fpoverlap;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.LinearGradient;
 import android.graphics.Rect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.ShapeDrawable;
+import android.graphics.drawable.shapes.RectShape;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -50,6 +59,8 @@ import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -75,6 +86,8 @@ import io.github.libxposed.service.XposedProvider;
 
 public class MainActivity extends Activity {
     private static final String STATE_TAB = "active_tab";
+    private static final String STATE_FC_SUBPAGE = "open_fc_subpage";
+    private static final String STATE_FC_TINT_EXPANDED = "fc_tint_expanded";
     private static final String COOLAPK_DEEP_PREFIX = "coolmarket://u/";
     private static final String COOLAPK_WEB_PREFIX = "https://www.coolapk.com/u/";
     private static final String LSPOSED_REPO_JSON_URL = "https://modules.lsposed.org/module/io.github.nicochanyo.c17fpoverlap.json";
@@ -91,11 +104,13 @@ public class MainActivity extends Activity {
     private static final int TAB_ABOUT = 2;
 
     private static final PathInterpolator FLUID_EASE = new PathInterpolator(0.22f, 1.0f, 0.36f, 1.0f);
-    private static final PathInterpolator MENU_EASE = new PathInterpolator(0.20f, 0.90f, 0.28f, 1.0f);
     private static final OvershootInterpolator ICON_SPRING = new OvershootInterpolator(1.25f);
     private static final OvershootInterpolator NAV_SPRING_BACK = new OvershootInterpolator(1.15f);
     private static final float COLLAPSED_TITLE_SCALE = 0.70f;
     private static final float SUBTITLE_FADE_END_PROGRESS = 0.48f;
+    private static final float SUBPAGE_COLLAPSED_TITLE_SCALE = 0.68f;
+    private static final float SUBPAGE_PARALLAX_RATIO = 0.22f;
+    private static final float SUBPAGE_SCRIM_MAX_ALPHA = 0.14f;
 
     private static int sPendingTabAfterRecreate = -1;
 
@@ -107,6 +122,8 @@ public class MainActivity extends Activity {
 
     private int activeTab = TAB_LOCKSCREEN;
     private boolean suppressUiCallbacks;
+    private boolean livingFlowUi;
+    private int lastAppliedAccent;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService syncExecutor = Executors.newSingleThreadExecutor();
@@ -119,6 +136,7 @@ public class MainActivity extends Activity {
     };
 
     // Header & Progressive Blur
+    private View layoutAppRoot;
     private ProgressiveBlurFrameLayout layoutRootBlur;
     private TopGradientBlurView vTopHeaderBlur;
     private View layoutHeader;
@@ -127,11 +145,34 @@ public class MainActivity extends Activity {
     private ValueAnimator headerCollapseAnimator;
     private ValueAnimator subtitleTabFadeAnimator;
     private float headerCollapseProgress;
+    private float headerTitleTabAlpha = 1f;
     private float subtitleTabAlpha = 1f;
+    private View btnTopQuickAppearance;
     private int statusBarTopPx;
+    private int navBarBottomPx;
     private int headerTitleShiftPx;
     private int headerSubtitleShiftPx;
     private int headerCollapseRangePx;
+
+    // Appearance Fullscreen Secondary Page
+    private View vSubpageScrim;
+    private ProgressiveBlurFrameLayout layoutFcSubpageRoot;
+    private View layoutFcSubpageContainer;
+    private CouiBounceScrollView scrollFcSubpage;
+    private View layoutFcSubpageContent;
+    private TopGradientBlurView vSubpageHeaderBlur;
+    private View layoutSubpageHeader;
+    private View layoutSubpageToolbar;
+    private View btnSubpageBack;
+    private TextView tvSubpageTitle;
+    private TextView tvSubpageSubtitle;
+    private FluidCloudPreviewView fcSubpagePreview;
+    private float subpageHeaderCollapseProgress;
+    private int subpageCollapseRangePx;
+    private ValueAnimator subpageTransitionAnimator;
+    private int subpageAnimGen;
+    private Object fcSubpageBackCallback;
+    private boolean fcSubpageBackRegistered;
 
     // Pages & Swipe tracking
     private View layoutPageContainer;
@@ -153,6 +194,8 @@ public class MainActivity extends Activity {
     private View layoutNavItems;
     private View vNavSlidingPill;
     private ValueAnimator navPillMorphAnimator;
+    private LivingFlowEffects.SpotLightDrawable navSpotLight;
+    private LivingFlowEffects.NavBarElasticController navElasticController;
     private final View[] navTabs = new View[3];
     private final ImageView[] navIcons = new ImageView[3];
     private final TextView[] navLabels = new TextView[3];
@@ -166,6 +209,9 @@ public class MainActivity extends Activity {
     private float navMaxPillX;
 
     // Tab 0: Status card & Lockscreen controls
+    private View cardLockStatus;
+    private View vLockStatusEmblem;
+    private TextView tvLockStatusBadge;
     private ImageView ivStatusIcon;
     private TextView tvStatusTitle;
     private TextView tvStatusSubtitle;
@@ -183,6 +229,7 @@ public class MainActivity extends Activity {
     private FluidCloudPreviewView fcPreview;
     private Switch swFcEnabled;
     private ViewGroup layoutFcSub;
+    private ViewGroup layoutFcTintCard;
     private TextView tvFcIslandOpacityVal;
     private SeekBar sbFcIslandOpacity;
     private TextView tvFcOpacityVal;
@@ -223,23 +270,41 @@ public class MainActivity extends Activity {
     private SeekBar sbFcMaskGradMid;
     private TextView tvFcMaskGradStrengthVal;
     private SeekBar sbFcMaskGradStrength;
-    private Switch swFcFollowStock;
-    private View rowFcColor;
-    private View vFcSwatch;
-    private TextView tvFcColorHex;
+    private TextView tvFcCustomColorSummary;
+    private View layoutFcTintBadge;
+    private View vFcTintSwatchDot;
+    private ImageView ivFcTintChevron;
+    private Switch swFcCustomColor;
+    private View dividerFcTintPicker;
+    private View layoutFcColorPickerWrap;
+    private CouiHsvColorPickerView fcColorPicker;
+    private ValueAnimator fcColorPickerAnimator;
+    private boolean fcColorPickerUserExpanded;
+    private boolean fcColorPickerExpanded;
+    private boolean fcColorPickerStateSynced;
     private TextView tvSummaryOpacityBlur;
     private TextView tvSummaryHighlight;
-    private TextView tvSummaryTint;
-    private final View[] fcMenuPanels = new View[4];
-    private final ImageView[] fcMenuChevrons = new ImageView[4];
-    private final ValueAnimator[] fcMenuAnimators = new ValueAnimator[4];
+    private final View[] fcMenuPanels = new View[3];
     private int openFcMenuIndex = -1;
 
     // Tab 2: About status controls
+    private View cardAboutDynamicHero;
+    private ColorOsDynamicBackdropView vAboutDynamicBg;
+    private View layoutAboutHeroLogo;
+    private TextView tvAboutHeroVer;
+    private TextView tvAboutHeroUpdateStatus;
+    private TextView tvAboutBuildSub;
+    private View cardAboutModuleStatus;
+    private View vAboutStatusEmblem;
+    private ImageView ivAboutStatusIcon;
+    private TextView tvAboutStatusTitle;
+    private TextView tvAboutStatusBadge;
+    private TextView tvAboutStatusSubtitle;
     private TextView tvSysVersion;
     private TextView tvDeviceModel;
     private TextView tvAboutChannel;
     private TextView tvAboutUpdateChip;
+    private TextView tvAboutUiStyleVal;
     private TextView tvAboutLanguageVal;
     private TextView tvAboutDarkModeVal;
     private Switch swAboutMonet;
@@ -269,8 +334,12 @@ public class MainActivity extends Activity {
         boolean isDark = ConfigStore.isDarkThemeActive(this);
         setTheme(isDark ? R.style.Theme_CouiFpOverlap_Dark : R.style.Theme_CouiFpOverlap_Light);
         super.onCreate(savedInstanceState);
+        livingFlowUi = ConfigStore.isLivingFlowUi(this);
         setupEdgeToEdge();
-        setContentView(R.layout.activity_main);
+        setContentView(livingFlowUi ? R.layout.activity_main_living_flow : R.layout.activity_main);
+        if (livingFlowUi) {
+            getWindow().setBackgroundDrawable(new ColorDrawable(getColor(R.color.lf_bg)));
+        }
         touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
 
         ConfigStore.AppPrefs opened = ConfigStore.openAppPrefs(this);
@@ -279,6 +348,10 @@ public class MainActivity extends Activity {
         hadLocalKeys = opened.hadLocalKeys;
         data = ConfigStore.loadFromPrefs(prefs);
 
+        final int restoredSubpage = savedInstanceState != null
+                ? savedInstanceState.getInt(STATE_FC_SUBPAGE, -1) : -1;
+        fcColorPickerUserExpanded = savedInstanceState != null
+                && savedInstanceState.getBoolean(STATE_FC_TINT_EXPANDED, false);
         if (sPendingTabAfterRecreate >= TAB_LOCKSCREEN && sPendingTabAfterRecreate <= TAB_ABOUT) {
             activeTab = sPendingTabAfterRecreate;
             sPendingTabAfterRecreate = -1;
@@ -290,7 +363,14 @@ public class MainActivity extends Activity {
         applyInsetsPadding();
         syncUiState();
         DynamicThemeHelper.applyAccent(findViewById(android.R.id.content), this);
+        lastAppliedAccent = DynamicThemeHelper.getAccent(this);
         switchTab(activeTab, false);
+        if (activeTab == TAB_APPEARANCE
+                && restoredSubpage >= 0
+                && restoredSubpage < fcMenuPanels.length
+                && data.fcEnabled) {
+            openFcSubpage(restoredSubpage, false);
+        }
         if (sCachedLatestRelease != null) {
             applyUpdateChipState(sCachedLatestRelease);
         } else if (!sSilentUpdateCheckDone) {
@@ -342,24 +422,80 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putInt(STATE_TAB, activeTab);
+        outState.putInt(STATE_FC_SUBPAGE, openFcMenuIndex);
+        outState.putBoolean(STATE_FC_TINT_EXPANDED, fcColorPickerUserExpanded);
     }
 
     @Override
     protected void onRestoreInstanceState(Bundle savedInstanceState) {
         super.onRestoreInstanceState(savedInstanceState);
         syncActiveHeaderToScrollNow();
+        if (isFcSubpageOpen()) {
+            syncSubpageHeaderToScrollNow();
+        }
     }
 
     @Override
     protected void onPostResume() {
         super.onPostResume();
         syncActiveHeaderToScrollNow();
+        if (isFcSubpageOpen()) {
+            syncSubpageHeaderToScrollNow();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (livingFlowUi) {
+            int curAccent = DynamicThemeHelper.getAccent(this);
+            if (curAccent != lastAppliedAccent) {
+                lastAppliedAccent = curAccent;
+                DynamicThemeHelper.applyAccent(findViewById(android.R.id.content), this);
+                updateNavIndicator(activeTab, activeTab, 0, false, false);
+                boolean darkNow = ConfigStore.isDarkThemeActive(this);
+                View b1 = findViewById(R.id.btnRestartUiLock);
+                View b2 = findViewById(R.id.btnRestartUiFc);
+                if (b1 != null) {
+                    ColorOsLivingFlowEngine.applyLuminousPillButton(b1, true, curAccent, darkNow, true);
+                }
+                if (b2 != null) {
+                    ColorOsLivingFlowEngine.applyLuminousPillButton(b2, true, curAccent, darkNow, true);
+                }
+                syncStatusAndAboutUi();
+            }
+            if (vAboutDynamicBg != null && activeTab == TAB_ABOUT && !LivingFlowUpdatePages.hasActiveStage(this)) {
+                vAboutDynamicBg.resumePlayback();
+            }
+            LivingFlowUpdatePages.onHostResume(this);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        if (vAboutDynamicBg != null) {
+            vAboutDynamicBg.pausePlayback();
+        }
+        LivingFlowUpdatePages.onHostPause(this);
+        super.onPause();
     }
 
     @Override
     protected void onDestroy() {
         XposedProvider.setConnectionListener(null);
         mainHandler.removeCallbacks(debouncedSync);
+        updateSubpageBackCallback(false);
+        if (subpageTransitionAnimator != null) {
+            subpageTransitionAnimator.cancel();
+            subpageTransitionAnimator = null;
+        }
+        if (fcColorPickerAnimator != null) {
+            fcColorPickerAnimator.cancel();
+            fcColorPickerAnimator = null;
+        }
+        if (dividerFcTintPicker != null) {
+            dividerFcTintPicker.animate().cancel();
+        }
         if (navPillMorphAnimator != null) {
             navPillMorphAnimator.cancel();
             navPillMorphAnimator = null;
@@ -378,11 +514,11 @@ public class MainActivity extends Activity {
         if (tvPageSubtitle != null) {
             tvPageSubtitle.animate().cancel();
         }
-        for (int i = 0; i < fcMenuAnimators.length; i++) {
-            if (fcMenuAnimators[i] != null) {
-                fcMenuAnimators[i].cancel();
-                fcMenuAnimators[i] = null;
-            }
+        if (layoutFcSubpageRoot != null) {
+            layoutFcSubpageRoot.animate().cancel();
+        }
+        if (layoutRootBlur != null) {
+            layoutRootBlur.animate().cancel();
         }
         if (layoutBottomNav != null) {
             layoutBottomNav.animate().cancel();
@@ -390,8 +526,81 @@ public class MainActivity extends Activity {
         if (vNavSlidingPill != null) {
             vNavSlidingPill.animate().cancel();
         }
+        if (navElasticController != null) {
+            navElasticController.cancel();
+            navElasticController = null;
+        }
+        if (navSpotLight != null) {
+            navSpotLight.cancel();
+            navSpotLight = null;
+        }
         syncExecutor.shutdownNow();
         super.onDestroy();
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public void onBackPressed() {
+        if (LivingFlowUpdatePages.popActiveStage(this)) {
+            return;
+        }
+        if (isFcSubpageOpen()) {
+            closeFcSubpage(true);
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    private void updateSubpageBackCallback(boolean shouldRegister) {
+        if (Build.VERSION.SDK_INT < 33) {
+            return;
+        }
+        try {
+            if (shouldRegister) {
+                if (!fcSubpageBackRegistered) {
+                    if (fcSubpageBackCallback == null) {
+                        fcSubpageBackCallback = Api33BackHelper.create(() -> closeFcSubpage(true));
+                    }
+                    Api33BackHelper.register(this, fcSubpageBackCallback);
+                    fcSubpageBackRegistered = true;
+                }
+            } else if (fcSubpageBackRegistered && fcSubpageBackCallback != null) {
+                Api33BackHelper.unregister(this, fcSubpageBackCallback);
+                fcSubpageBackRegistered = false;
+            }
+        } catch (Throwable ignored) {
+            fcSubpageBackRegistered = false;
+        }
+    }
+
+    @TargetApi(33)
+    private static final class Api33BackHelper {
+        private Api33BackHelper() {
+        }
+
+        static Object create(final Runnable onBack) {
+            return new OnBackInvokedCallback() {
+                @Override
+                public void onBackInvoked() {
+                    if (onBack != null) {
+                        onBack.run();
+                    }
+                }
+            };
+        }
+
+        static void register(Activity activity, Object cb) {
+            if (activity != null && cb instanceof OnBackInvokedCallback) {
+                activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                        OnBackInvokedDispatcher.PRIORITY_DEFAULT, (OnBackInvokedCallback) cb);
+            }
+        }
+
+        static void unregister(Activity activity, Object cb) {
+            if (activity != null && cb instanceof OnBackInvokedCallback) {
+                activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback((OnBackInvokedCallback) cb);
+            }
+        }
     }
 
     @Override
@@ -433,13 +642,17 @@ public class MainActivity extends Activity {
     }
 
     private boolean isSwipeEligibleTouch(float rawX, float rawY) {
+        if (isFcSubpageOpen() || LivingFlowUpdatePages.hasActiveStage(this)) {
+            return false;
+        }
         if (rawY < statusBarTopPx) {
             return false;
         }
         if (layoutPageContainer == null || !isPointInView(layoutPageContainer, rawX, rawY)) {
             return false;
         }
-        if (isPointInView(layoutBottomNavContainer, rawX, rawY)) {
+        if (isPointInView(layoutBottomNav, rawX, rawY)
+                || isPointInView(btnTopQuickAppearance, rawX, rawY)) {
             return false;
         }
         return !isPointInInteractiveChild(pages[activeTab], rawX, rawY);
@@ -459,7 +672,8 @@ public class MainActivity extends Activity {
         if (root == null || root.getVisibility() != View.VISIBLE) {
             return false;
         }
-        if ((root instanceof SeekBar || root instanceof Switch) && isPointInView(root, rawX, rawY)) {
+        if ((root instanceof SeekBar || root instanceof Switch || root instanceof CouiColorSliderView)
+                && isPointInView(root, rawX, rawY)) {
             return true;
         }
         if (root instanceof ViewGroup) {
@@ -506,12 +720,14 @@ public class MainActivity extends Activity {
     }
 
     private void applyInsetsPadding() {
-        final int headerPadH = dp(24);
-        final int headerTopBase = dp(28);
-        final int headerBotBase = dp(16);
+        final int headerPadStart = livingFlowUi ? dp(22) : dp(24);
+        final int headerPadEnd = livingFlowUi ? dp(18) : dp(24);
+        final int headerTopBase = livingFlowUi ? 0 : dp(28);
+        final int headerBotBase = livingFlowUi ? dp(12) : dp(16);
         headerTitleShiftPx = dp(24);
-        headerSubtitleShiftPx = dp(26);
+        headerSubtitleShiftPx = livingFlowUi ? dp(34) : dp(26);
         headerCollapseRangePx = dp(64);
+        subpageCollapseRangePx = dp(68);
 
         layoutHeader.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
@@ -523,11 +739,15 @@ public class MainActivity extends Activity {
                     top = insets.getSystemWindowInsetTop();
                 }
                 statusBarTopPx = top;
-                v.setPadding(headerPadH, top + headerTopBase, headerPadH, headerBotBase);
+                v.setPaddingRelative(headerPadStart, top + headerTopBase, headerPadEnd, headerBotBase);
                 if (vTopHeaderBlur != null) {
+                    if (livingFlowUi) {
+                        vTopHeaderBlur.setSurfaceColor(getColor(R.color.lf_bg));
+                    }
                     vTopHeaderBlur.setStatusBarTopPx(top);
                 }
                 syncHeaderGeometryAndScrollPadding();
+                applySubpageInsets();
                 return insets;
             }
         });
@@ -538,7 +758,15 @@ public class MainActivity extends Activity {
         });
         layoutHeader.requestApplyInsets();
 
-        final int navBotBase = dp(14);
+        if (layoutSubpageHeader != null) {
+            layoutSubpageHeader.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                if ((bottom - top) != (oldBottom - oldTop)) {
+                    syncSubpageHeaderGeometryAndPadding();
+                }
+            });
+        }
+
+        final int navBotBase = livingFlowUi ? dp(8) : dp(14);
         layoutBottomNavContainer.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
@@ -548,19 +776,126 @@ public class MainActivity extends Activity {
                 } else {
                     bottom = insets.getSystemWindowInsetBottom();
                 }
+                navBarBottomPx = bottom;
                 v.setPadding(0, 0, 0, bottom + navBotBase);
                 if (vBottomNavShadow != null) {
                     ViewGroup.LayoutParams lp = vBottomNavShadow.getLayoutParams();
-                    int targetH = bottom + dp(104);
+                    int targetH = bottom + dp(livingFlowUi ? 164 : 104);
                     if (lp != null && lp.height != targetH) {
                         lp.height = targetH;
                         vBottomNavShadow.setLayoutParams(lp);
                     }
                 }
+                applySubpageInsets();
                 return insets;
             }
         });
         layoutBottomNavContainer.requestApplyInsets();
+        applySubpageInsets();
+    }
+
+    private void applySubpageInsets() {
+        if (layoutSubpageHeader != null) {
+            int targetTop = statusBarTopPx + dp(4);
+            int targetBot = dp(12);
+            if (layoutSubpageHeader.getPaddingTop() != targetTop
+                    || layoutSubpageHeader.getPaddingBottom() != targetBot) {
+                layoutSubpageHeader.setPadding(0, targetTop, 0, targetBot);
+            }
+        }
+        if (vSubpageHeaderBlur != null) {
+            if (livingFlowUi) {
+                vSubpageHeaderBlur.setSurfaceColor(getColor(R.color.lf_bg));
+            }
+            vSubpageHeaderBlur.setStatusBarTopPx(statusBarTopPx);
+        }
+        if (layoutFcSubpageRoot instanceof SwipeableBlurFrameLayout) {
+            ((SwipeableBlurFrameLayout) layoutFcSubpageRoot).setTopBarSafeY(statusBarTopPx + dp(68));
+        }
+        syncSubpageHeaderGeometryAndPadding();
+    }
+
+    private void syncSubpageHeaderGeometryAndPadding() {
+        if (layoutFcSubpageContent != null && layoutSubpageHeader != null) {
+            int headerH = layoutSubpageHeader.getHeight();
+            int targetTopPad = headerH > 0 ? (headerH + dp(4)) : layoutFcSubpageContent.getPaddingTop();
+            int targetBotPad = navBarBottomPx + dp(32);
+            if (layoutFcSubpageContent.getPaddingTop() != targetTopPad
+                    || layoutFcSubpageContent.getPaddingBottom() != targetBotPad) {
+                layoutFcSubpageContent.setPaddingRelative(
+                        layoutFcSubpageContent.getPaddingStart(),
+                        targetTopPad,
+                        layoutFcSubpageContent.getPaddingEnd(),
+                        targetBotPad);
+            }
+        }
+        if (vSubpageHeaderBlur != null) {
+            int targetBlurH = livingFlowUi
+                    ? (statusBarTopPx + dp(108))
+                    : (statusBarTopPx + dp(4) + dp(48) + dp(44));
+            ViewGroup.LayoutParams lp = vSubpageHeaderBlur.getLayoutParams();
+            if (lp != null && lp.height != targetBlurH) {
+                lp.height = targetBlurH;
+                vSubpageHeaderBlur.setLayoutParams(lp);
+            }
+        }
+        syncSubpageHeaderToScrollNow();
+    }
+
+    private void syncSubpageHeaderToScrollNow() {
+        if (scrollFcSubpage != null) {
+            syncSubpageHeaderToScrollY(scrollFcSubpage.getScrollY());
+        }
+        if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
+            vSubpageHeaderBlur.notifyTargetInvalidated();
+        }
+    }
+
+    private void syncSubpageHeaderToScrollY(int scrollY) {
+        float range = Math.max(1f, subpageCollapseRangePx > 0 ? subpageCollapseRangePx : dp(68));
+        applySubpageHeaderCollapseProgress(scrollY / range);
+    }
+
+    private void applySubpageHeaderCollapseProgress(float p) {
+        subpageHeaderCollapseProgress = Math.max(0f, Math.min(1f, p));
+        if (tvSubpageTitle != null) {
+            boolean isRtl = tvSubpageTitle.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+            tvSubpageTitle.setPivotX(isRtl ? tvSubpageTitle.getWidth() : 0f);
+            tvSubpageTitle.setPivotY(0f);
+            float scale = 1f - (1f - SUBPAGE_COLLAPSED_TITLE_SCALE) * subpageHeaderCollapseProgress;
+            tvSubpageTitle.setScaleX(scale);
+            tvSubpageTitle.setScaleY(scale);
+
+            float targetShiftX;
+            if (layoutSubpageToolbar != null && btnSubpageBack != null && btnSubpageBack.getWidth() > 0) {
+                if (isRtl) {
+                    targetShiftX = (layoutSubpageToolbar.getLeft() + btnSubpageBack.getLeft() - dp(6))
+                            - tvSubpageTitle.getRight();
+                } else {
+                    targetShiftX = (layoutSubpageToolbar.getLeft() + btnSubpageBack.getRight() + dp(6))
+                            - tvSubpageTitle.getLeft();
+                }
+            } else {
+                targetShiftX = isRtl ? -dp(34) : dp(34);
+            }
+
+            float targetShiftY;
+            if (layoutSubpageToolbar != null && layoutSubpageToolbar.getHeight() > 0 && tvSubpageTitle.getHeight() > 0) {
+                float toolbarCenterY = layoutSubpageToolbar.getTop() + layoutSubpageToolbar.getHeight() * 0.5f;
+                float collapsedTitleH = tvSubpageTitle.getHeight() * SUBPAGE_COLLAPSED_TITLE_SCALE;
+                targetShiftY = (toolbarCenterY - collapsedTitleH * 0.5f) - tvSubpageTitle.getTop();
+            } else {
+                targetShiftY = -dp(38);
+            }
+
+            tvSubpageTitle.setTranslationX(targetShiftX * subpageHeaderCollapseProgress);
+            tvSubpageTitle.setTranslationY(targetShiftY * subpageHeaderCollapseProgress);
+        }
+        if (tvSubpageSubtitle != null) {
+            float subT = Math.max(0f, Math.min(1f, subpageHeaderCollapseProgress / SUBTITLE_FADE_END_PROGRESS));
+            tvSubpageSubtitle.setTranslationY(-dp(24) * subT);
+            tvSubpageSubtitle.setAlpha(computeSubtitleAlpha(subpageHeaderCollapseProgress));
+        }
     }
 
     private void syncHeaderGeometryAndScrollPadding() {
@@ -583,9 +918,19 @@ public class MainActivity extends Activity {
                 }
             }
         }
+        if (livingFlowUi && tvPageTitle != null && tvPageTitle.getHeight() > 0) {
+            float collapsedH = tvPageTitle.getHeight() * 0.6875f;
+            float targetCollapsedTop = dp(26) - collapsedH * 0.5f;
+            headerTitleShiftPx = Math.max(dp(34), Math.round(dp(54) - targetCollapsedTop));
+        }
         if (vTopHeaderBlur != null && tvPageTitle != null && tvPageTitle.getHeight() > 0) {
-            int collapsedTitleH = Math.round(tvPageTitle.getHeight() * COLLAPSED_TITLE_SCALE);
-            int targetBlurH = statusBarTopPx + dp(4) + collapsedTitleH + dp(56);
+            int targetBlurH;
+            if (livingFlowUi) {
+                targetBlurH = statusBarTopPx + dp(104);
+            } else {
+                int collapsedTitleH = Math.round(tvPageTitle.getHeight() * COLLAPSED_TITLE_SCALE);
+                targetBlurH = statusBarTopPx + dp(4) + collapsedTitleH + dp(56);
+            }
             ViewGroup.LayoutParams lp = vTopHeaderBlur.getLayoutParams();
             if (lp != null && lp.height != targetBlurH) {
                 lp.height = targetBlurH;
@@ -620,6 +965,28 @@ public class MainActivity extends Activity {
 
     private void applyHeaderCollapseProgress(float p) {
         headerCollapseProgress = Math.max(0f, Math.min(1f, p));
+        if (livingFlowUi) {
+            if (tvPageTitle != null) {
+                float pivotX = (tvPageTitle.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL)
+                        ? tvPageTitle.getWidth() : 0f;
+                tvPageTitle.setPivotX(pivotX);
+                tvPageTitle.setPivotY(0f);
+                float titleScale = 1f - (1f - 0.6875f) * headerCollapseProgress;
+                tvPageTitle.setScaleX(titleScale);
+                tvPageTitle.setScaleY(titleScale);
+                tvPageTitle.setTranslationY(-headerTitleShiftPx * headerCollapseProgress);
+                tvPageTitle.setAlpha(headerTitleTabAlpha);
+            }
+            if (tvPageSubtitle != null) {
+                float subT = Math.min(1f, headerCollapseProgress / 0.56f);
+                tvPageSubtitle.setScaleX(1f);
+                tvPageSubtitle.setScaleY(1f);
+                tvPageSubtitle.setTranslationY(-headerSubtitleShiftPx * subT);
+                float subAlpha = Math.max(0f, 1f - (float) Math.pow(subT, 1.35));
+                tvPageSubtitle.setAlpha(subAlpha * subtitleTabAlpha);
+            }
+            return;
+        }
         if (tvPageTitle != null) {
             float pivotX = (tvPageTitle.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL)
                     ? tvPageTitle.getWidth() : 0f;
@@ -629,6 +996,7 @@ public class MainActivity extends Activity {
             tvPageTitle.setScaleX(scale);
             tvPageTitle.setScaleY(scale);
             tvPageTitle.setTranslationY(-headerTitleShiftPx * headerCollapseProgress);
+            tvPageTitle.setAlpha(1f);
         }
         if (tvPageSubtitle != null) {
             float subT = Math.max(0f, Math.min(1f, headerCollapseProgress / SUBTITLE_FADE_END_PROGRESS));
@@ -667,11 +1035,24 @@ public class MainActivity extends Activity {
     }
 
     private void bindViews() {
+        layoutAppRoot = findViewById(R.id.layoutAppRoot);
         layoutRootBlur = findViewById(R.id.layoutRootBlur);
         vTopHeaderBlur = findViewById(R.id.vTopHeaderBlur);
         layoutHeader = findViewById(R.id.layoutHeader);
         tvPageTitle = findViewById(R.id.tvPageTitle);
         tvPageSubtitle = findViewById(R.id.tvPageSubtitle);
+
+        vSubpageScrim = findViewById(R.id.vSubpageScrim);
+        layoutFcSubpageRoot = findViewById(R.id.layoutFcSubpageRoot);
+        layoutFcSubpageContainer = findViewById(R.id.layoutFcSubpageContainer);
+        scrollFcSubpage = findViewById(R.id.scrollFcSubpage);
+        layoutFcSubpageContent = findViewById(R.id.layoutFcSubpageContent);
+        vSubpageHeaderBlur = findViewById(R.id.vSubpageHeaderBlur);
+        layoutSubpageHeader = findViewById(R.id.layoutSubpageHeader);
+        layoutSubpageToolbar = findViewById(R.id.layoutSubpageToolbar);
+        btnSubpageBack = findViewById(R.id.btnSubpageBack);
+        tvSubpageTitle = findViewById(R.id.tvSubpageTitle);
+        tvSubpageSubtitle = findViewById(R.id.tvSubpageSubtitle);
 
         layoutPageContainer = findViewById(R.id.layoutPageContainer);
         pageLockscreen = findViewById(R.id.pageLockscreen);
@@ -684,6 +1065,32 @@ public class MainActivity extends Activity {
         if (layoutRootBlur != null) {
             layoutRootBlur.bindProgressiveBlur(R.id.layoutPageContainer, R.id.vTopHeaderBlur);
         }
+        if (layoutFcSubpageRoot != null) {
+            layoutFcSubpageRoot.bindProgressiveBlur(R.id.layoutFcSubpageContainer, R.id.vSubpageHeaderBlur);
+        }
+        if (scrollFcSubpage != null) {
+            scrollFcSubpage.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
+                if (vSubpageHeaderBlur != null) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+                syncSubpageHeaderToScrollY(scrollY);
+            });
+            scrollFcSubpage.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                syncSubpageHeaderToScrollY(v.getScrollY());
+                if (vSubpageHeaderBlur != null) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+            });
+            scrollFcSubpage.setOnOverscrollListener(translationY -> {
+                if (vSubpageHeaderBlur != null) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+            });
+        }
+        if (btnSubpageBack != null) {
+            btnSubpageBack.setOnClickListener(v -> closeFcSubpage(true));
+        }
+
         for (int i = 0; i < pages.length; i++) {
             final int tabIdx = i;
             if (pages[i] != null) {
@@ -734,9 +1141,260 @@ public class MainActivity extends Activity {
         bindLockscreenViews();
         bindAppearanceViews();
         bindAboutViews();
+        if (livingFlowUi) {
+            setupLivingFlowUi();
+        }
         applyCardOutlineClipping(pages[TAB_LOCKSCREEN]);
         applyCardOutlineClipping(pages[TAB_APPEARANCE]);
         applyCardOutlineClipping(pages[TAB_ABOUT]);
+        applyCardOutlineClipping(layoutFcSubpageContainer);
+    }
+
+    private void setupLivingFlowUi() {
+        btnTopQuickAppearance = findViewById(R.id.btnTopQuickAppearance);
+        final boolean dark = ConfigStore.isDarkThemeActive(this);
+        final float d = getResources().getDisplayMetrics().density;
+
+        if (vTopHeaderBlur != null) {
+            vTopHeaderBlur.setSurfaceColor(getColor(R.color.lf_bg));
+            vTopHeaderBlur.setOutlineProvider(null);
+            vTopHeaderBlur.setTranslationZ(4f * d);
+        }
+        if (layoutHeader != null) {
+            layoutHeader.setOutlineProvider(null);
+            layoutHeader.setTranslationZ(12f * d);
+        }
+        if (vSubpageHeaderBlur != null) {
+            vSubpageHeaderBlur.setSurfaceColor(getColor(R.color.lf_bg));
+            vSubpageHeaderBlur.setOutlineProvider(null);
+            vSubpageHeaderBlur.setTranslationZ(4f * d);
+        }
+        if (layoutSubpageHeader != null) {
+            layoutSubpageHeader.setOutlineProvider(null);
+            layoutSubpageHeader.setTranslationZ(12f * d);
+        }
+        if (layoutBottomNavContainer != null) {
+            layoutBottomNavContainer.setOutlineProvider(null);
+            layoutBottomNavContainer.setTranslationZ(16f * d);
+        }
+        if (vBottomNavShadow != null) {
+            vBottomNavShadow.setOutlineProvider(null);
+            vBottomNavShadow.setTranslationZ(14f * d);
+            final int maxAlpha = dark ? 0xB8 : 0x26;
+            final int count = 24;
+            final int[] stopsColor = new int[count];
+            final float[] stopsPos = new float[count];
+            for (int i = 0; i < count; i++) {
+                float t = i / (float) (count - 1);
+                stopsPos[i] = t;
+                int a = (i <= 1) ? 0 : Math.min(255, Math.round(maxAlpha * (float) Math.pow(t, 2.8)));
+                stopsColor[i] = (a << 24);
+            }
+            ShapeDrawable scrim = new ShapeDrawable(new RectShape());
+            scrim.getPaint().setDither(true);
+            scrim.setShaderFactory(new ShapeDrawable.ShaderFactory() {
+                @Override
+                public Shader resize(int width, int height) {
+                    return new LinearGradient(
+                            0f, 0f, 0f, Math.max(1f, height),
+                            stopsColor, stopsPos, Shader.TileMode.CLAMP);
+                }
+            });
+            vBottomNavShadow.setBackground(scrim);
+        }
+
+        ColorOsLivingFlowEngine.applyGlassSurface(layoutBottomNav,
+                ColorOsLivingFlowEngine.GlassPreset.BOTTOM_BAR_PILL, dark, 28f, false, true);
+        ColorOsLivingFlowEngine.applyGlassSurface(btnTopQuickAppearance,
+                ColorOsLivingFlowEngine.GlassPreset.TOP_BAR_CIRCLE, dark, 21f, true, false);
+        ColorOsLivingFlowEngine.applyGlassSurface(btnSubpageBack,
+                ColorOsLivingFlowEngine.GlassPreset.TOP_BAR_CIRCLE, dark, 21f, true, false);
+
+        navSpotLight = new LivingFlowEffects.SpotLightDrawable(
+                dark, d, 28f, false, true, dark ? 0.24f : 0.30f, 88f);
+        if (layoutBottomNav != null) {
+            layoutBottomNav.setForeground(navSpotLight);
+            navElasticController = new LivingFlowEffects.NavBarElasticController(layoutBottomNav);
+        }
+
+        LivingFlowEffects.TouchFeedback.attach(btnTopQuickAppearance,
+                LivingFlowEffects.TouchFeedback.Profile.GLASS_CIRCLE, dark, 21f, true, false, true);
+        LivingFlowEffects.TouchFeedback.attach(btnSubpageBack,
+                LivingFlowEffects.TouchFeedback.Profile.GLASS_CIRCLE, dark, 21f, true, false, true);
+
+        int accent = DynamicThemeHelper.getAccent(this);
+        int[] pillBtnIds = new int[]{
+                R.id.btnResetLock,
+                R.id.btnRestartUiLock,
+                R.id.btnResetFc,
+                R.id.btnRestartUiFc,
+                R.id.btnMinus,
+                R.id.btnPlus
+        };
+        for (int id : pillBtnIds) {
+            View btn = findViewById(id);
+            if (btn != null) {
+                boolean isPrimary = (id == R.id.btnRestartUiLock || id == R.id.btnRestartUiFc);
+                LivingFlowEffects.TouchFeedback.attach(btn,
+                        LivingFlowEffects.TouchFeedback.Profile.PRIMARY_BUTTON, dark, 999f, false, true);
+                ColorOsLivingFlowEngine.applyLuminousPillButton(btn, isPrimary, accent, dark, true);
+            }
+        }
+
+        if (cardAboutDynamicHero != null) {
+            ColorOsLivingFlowEngine.applySmoothCard(cardAboutDynamicHero, 28f, 2.0f, dark, false);
+            ColorOsLivingFlowEngine.installSmoothOutline(cardAboutDynamicHero, 28f, 2.0f, false, false);
+            cardAboutDynamicHero.setClipToOutline(true);
+            LivingFlowEffects.TouchFeedback.attach(cardAboutDynamicHero,
+                    LivingFlowEffects.TouchFeedback.Profile.HERO_CARD, dark, 28f, false, false);
+        }
+        ImageView ivAboutHeroLogo = findViewById(R.id.ivAboutHeroLogo);
+        if (ivAboutHeroLogo != null) {
+            Drawable officialLogo = ColorOsDynamicBackdropView.loadOfficialColorOsLogo(this);
+            if (officialLogo != null) {
+                ivAboutHeroLogo.setImageDrawable(officialLogo);
+            }
+        }
+        if (tvAboutHeroVer != null) {
+            tvAboutHeroVer.setText(R.string.about_hero_module_subtitle);
+        }
+        if (tvAboutBuildSub != null) {
+            tvAboutBuildSub.setText("v" + getInstalledVersionName() + " (" + getInstalledVersionCode() + ")");
+        }
+
+        if (btnTopQuickAppearance != null) {
+            btnTopQuickAppearance.setOnClickListener(this::showTopQuickActionsMenu);
+        }
+
+        if (layoutFcSubpageRoot instanceof SwipeableBlurFrameLayout) {
+            SwipeableBlurFrameLayout sw = (SwipeableBlurFrameLayout) layoutFcSubpageRoot;
+            sw.setTopBarSafeY(statusBarTopPx + dp(68));
+            sw.setOnEdgeSwipeListener(new SwipeableBlurFrameLayout.OnEdgeSwipeListener() {
+                @Override
+                public void onSwipeStart() {
+                    if (subpageTransitionAnimator != null) {
+                        subpageTransitionAnimator.cancel();
+                        subpageTransitionAnimator = null;
+                    }
+                    if (layoutRootBlur != null) {
+                        layoutRootBlur.setVisibility(View.VISIBLE);
+                    }
+                    if (vSubpageScrim != null) {
+                        vSubpageScrim.setVisibility(View.VISIBLE);
+                    }
+                }
+
+                @Override
+                public void onSwipeDrag(float deltaX, float progress) {
+                    int w = (layoutAppRoot != null && layoutAppRoot.getWidth() > 0)
+                            ? layoutAppRoot.getWidth()
+                            : getResources().getDisplayMetrics().widthPixels;
+                    layoutFcSubpageRoot.setTranslationX(deltaX);
+                    if (layoutRootBlur != null) {
+                        layoutRootBlur.setTranslationX(-w * SUBPAGE_PARALLAX_RATIO * (1f - progress));
+                    }
+                    if (vSubpageScrim != null) {
+                        vSubpageScrim.setAlpha(SUBPAGE_SCRIM_MAX_ALPHA * (1f - progress));
+                    }
+                }
+
+                @Override
+                public void onSwipeEnd(boolean commitClose) {
+                    if (commitClose) {
+                        ColorOsLivingFlowEngine.performHaptic(
+                                layoutFcSubpageRoot, ColorOsLivingFlowEngine.HapticKind.TICK);
+                        closeFcSubpage(true);
+                        return;
+                    }
+                    final int gen = ++subpageAnimGen;
+                    final float slideDist = (layoutAppRoot != null && layoutAppRoot.getWidth() > 0)
+                            ? layoutAppRoot.getWidth()
+                            : getResources().getDisplayMetrics().widthPixels;
+                    final float startSubX = layoutFcSubpageRoot.getTranslationX();
+                    final float startMainX = layoutRootBlur != null ? layoutRootBlur.getTranslationX() : 0f;
+                    final float endMainX = -slideDist * SUBPAGE_PARALLAX_RATIO;
+                    final float startScrim = vSubpageScrim != null ? vSubpageScrim.getAlpha() : 0f;
+
+                    final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+                    subpageTransitionAnimator = anim;
+                    anim.setDuration(240L);
+                    anim.setInterpolator(FLUID_EASE);
+                    anim.addUpdateListener(a -> {
+                        float t = (Float) a.getAnimatedValue();
+                        layoutFcSubpageRoot.setTranslationX(startSubX * (1f - t));
+                        if (layoutRootBlur != null) {
+                            layoutRootBlur.setTranslationX(startMainX + (endMainX - startMainX) * t);
+                        }
+                        if (vSubpageScrim != null) {
+                            vSubpageScrim.setAlpha(startScrim + (SUBPAGE_SCRIM_MAX_ALPHA - startScrim) * t);
+                        }
+                    });
+                    anim.addListener(new AnimatorListenerAdapter() {
+                        private boolean cancelled;
+
+                        @Override
+                        public void onAnimationCancel(Animator animation) {
+                            cancelled = true;
+                        }
+
+                        @Override
+                        public void onAnimationEnd(Animator animation) {
+                            if (subpageTransitionAnimator == anim) {
+                                subpageTransitionAnimator = null;
+                            }
+                            if (!cancelled && gen == subpageAnimGen && isFcSubpageOpen()) {
+                                layoutFcSubpageRoot.setTranslationX(0f);
+                                if (vSubpageScrim != null) {
+                                    vSubpageScrim.setAlpha(0f);
+                                    vSubpageScrim.setVisibility(View.GONE);
+                                }
+                                if (layoutRootBlur != null) {
+                                    layoutRootBlur.setVisibility(View.INVISIBLE);
+                                    layoutRootBlur.setTranslationX(0f);
+                                }
+                            }
+                        }
+                    });
+                    anim.start();
+                }
+            });
+        }
+
+        if (activeTab == TAB_ABOUT) {
+            playAboutHeroEntrance(false);
+        }
+    }
+
+    private void showTopQuickActionsMenu(View anchor) {
+        final boolean showDebug = data != null && data.fcDebugMode;
+        String[] items = showDebug
+                ? new String[]{
+                        getString(R.string.about_restart_ui_title),
+                        getString(R.string.about_ui_style_title),
+                        getString(R.string.lf_software_update_title),
+                        getString(R.string.about_debug_tester_title),
+                        getString(R.string.about_reset_all_title)
+                }
+                : new String[]{
+                        getString(R.string.about_restart_ui_title),
+                        getString(R.string.about_ui_style_title),
+                        getString(R.string.lf_software_update_title),
+                        getString(R.string.about_reset_all_title)
+                };
+        CouiBottomSheet.showPopupMenu(this, anchor, CouiBottomSheet.Palette.fromModuleTheme(this),
+                items, -1, which -> {
+                    if (which == 0) {
+                        restartSystemUi();
+                    } else if (which == 1) {
+                        showUiStyleDialog(anchor);
+                    } else if (which == 2) {
+                        LivingFlowUpdatePages.showSoftwareUpdatePage(this);
+                    } else if (showDebug && which == 3) {
+                        showDebugTesterDialog();
+                    } else {
+                        confirmResetAll();
+                    }
+                });
     }
 
     private static void applyCardOutlineClipping(View view) {
@@ -753,6 +1411,9 @@ public class MainActivity extends Activity {
     }
 
     private void bindLockscreenViews() {
+        cardLockStatus = findViewById(R.id.cardLockStatus);
+        vLockStatusEmblem = findViewById(R.id.vLockStatusEmblem);
+        tvLockStatusBadge = findViewById(R.id.tvLockStatusBadge);
         ivStatusIcon = findViewById(R.id.ivStatusIcon);
         tvStatusTitle = findViewById(R.id.tvStatusTitle);
         tvStatusSubtitle = findViewById(R.id.tvStatusSubtitle);
@@ -779,6 +1440,9 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.align = isChecked;
                 persistImmediate();
             }
@@ -795,6 +1459,9 @@ public class MainActivity extends Activity {
             public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
                 if (suppressUiCallbacks) {
                     return;
+                }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
                 }
                 data.hideFpOnCapsule = isChecked;
                 persistImmediate();
@@ -874,6 +1541,9 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.immersiveFp = isChecked;
                 persistImmediate();
             }
@@ -891,6 +1561,9 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.aodNotifTranslucent = isChecked;
                 persistImmediate();
             }
@@ -907,6 +1580,9 @@ public class MainActivity extends Activity {
             public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
                 if (suppressUiCallbacks) {
                     return;
+                }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
                 }
                 data.lockNotifGlowFollowMedia = isChecked;
                 persistImmediate();
@@ -937,9 +1613,11 @@ public class MainActivity extends Activity {
 
     private void bindAppearanceViews() {
         fcPreview = findViewById(R.id.fcPreview);
+        fcSubpagePreview = findViewById(R.id.fcSubpagePreview);
         swFcEnabled = findViewById(R.id.swFcEnabled);
         layoutFcSub = findViewById(R.id.layoutFcSub);
         layoutFcSub.setClipToOutline(true);
+        layoutFcTintCard = findViewById(R.id.layoutFcTintCard);
         tvFcIslandOpacityVal = findViewById(R.id.tvFcIslandOpacityVal);
         sbFcIslandOpacity = findViewById(R.id.sbFcIslandOpacity);
         tvFcOpacityVal = findViewById(R.id.tvFcOpacityVal);
@@ -980,27 +1658,24 @@ public class MainActivity extends Activity {
         sbFcMaskGradMid = findViewById(R.id.sbFcMaskGradMid);
         tvFcMaskGradStrengthVal = findViewById(R.id.tvFcMaskGradStrengthVal);
         sbFcMaskGradStrength = findViewById(R.id.sbFcMaskGradStrength);
-        swFcFollowStock = findViewById(R.id.swFcFollowStock);
-        rowFcColor = findViewById(R.id.rowFcColor);
-        vFcSwatch = findViewById(R.id.vFcSwatch);
-        tvFcColorHex = findViewById(R.id.tvFcColorHex);
+        tvFcCustomColorSummary = findViewById(R.id.tvFcCustomColorSummary);
+        layoutFcTintBadge = findViewById(R.id.layoutFcTintBadge);
+        vFcTintSwatchDot = findViewById(R.id.vFcTintSwatchDot);
+        ivFcTintChevron = findViewById(R.id.ivFcTintChevron);
+        swFcCustomColor = findViewById(R.id.swFcCustomColor);
+        dividerFcTintPicker = findViewById(R.id.dividerFcTintPicker);
+        layoutFcColorPickerWrap = findViewById(R.id.layoutFcColorPickerWrap);
+        fcColorPicker = findViewById(R.id.fcColorPicker);
 
         tvSummaryOpacityBlur = findViewById(R.id.tvSummaryOpacityBlur);
         tvSummaryHighlight = findViewById(R.id.tvSummaryHighlight);
-        tvSummaryTint = findViewById(R.id.tvSummaryTint);
         fcMenuPanels[0] = findViewById(R.id.panelFcMenuOpacityBlur);
         fcMenuPanels[1] = findViewById(R.id.panelFcMenuHighlight);
         fcMenuPanels[2] = findViewById(R.id.panelFcMenuMasks);
-        fcMenuPanels[3] = findViewById(R.id.panelFcMenuTint);
-        fcMenuChevrons[0] = findViewById(R.id.ivChevronOpacityBlur);
-        fcMenuChevrons[1] = findViewById(R.id.ivChevronHighlight);
-        fcMenuChevrons[2] = findViewById(R.id.ivChevronMasks);
-        fcMenuChevrons[3] = findViewById(R.id.ivChevronTint);
         int[] menuHeaderIds = new int[]{
                 R.id.rowFcMenuOpacityBlur,
                 R.id.rowFcMenuHighlight,
-                R.id.rowFcMenuMasks,
-                R.id.rowFcMenuTint
+                R.id.rowFcMenuMasks
         };
         for (int i = 0; i < menuHeaderIds.length; i++) {
             final int menuIdx = i;
@@ -1010,7 +1685,7 @@ public class MainActivity extends Activity {
                     if (!data.fcEnabled) {
                         return;
                     }
-                    toggleFcSubmenu(menuIdx);
+                    openFcSubpage(menuIdx, true);
                 }
             });
         }
@@ -1026,6 +1701,9 @@ public class MainActivity extends Activity {
             public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
                 if (suppressUiCallbacks) {
                     return;
+                }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
                 }
                 data.fcEnabled = isChecked;
                 persistImmediate();
@@ -1381,6 +2059,9 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.fcRemoveIslandMask = isChecked;
                 persistImmediate();
             }
@@ -1398,6 +2079,9 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.fcMatchCard = isChecked;
                 persistImmediate();
             }
@@ -1414,6 +2098,9 @@ public class MainActivity extends Activity {
             public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
                 if (suppressUiCallbacks) {
                     return;
+                }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
                 }
                 data.fcRemoveShadeMask = isChecked;
                 persistImmediate();
@@ -1474,6 +2161,9 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.fcMaskFollowMedia = isChecked;
                 if (isChecked) {
                     data.fcRemoveIslandMask = false;
@@ -1525,54 +2215,79 @@ public class MainActivity extends Activity {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 data.fcNonMediaMaskEnabled = isChecked;
                 persistImmediate();
             }
         });
 
-        findViewById(R.id.rowFcFollowStock).setOnClickListener(new View.OnClickListener() {
+        findViewById(R.id.rowFcCustomColor).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                swFcFollowStock.toggle();
+                if (!data.fcEnabled) {
+                    return;
+                }
+                if (data.fcColor == 0) {
+                    fcColorPickerUserExpanded = true;
+                    swFcCustomColor.setChecked(true);
+                } else {
+                    fcColorPickerUserExpanded = !fcColorPickerUserExpanded;
+                    if (livingFlowUi) {
+                        ColorOsLivingFlowEngine.performHaptic(v, ColorOsLivingFlowEngine.HapticKind.TICK);
+                    }
+                    setFcColorPickerExpanded(fcColorPickerUserExpanded, true);
+                    updateFcTintHeaderUi(true);
+                }
             }
         });
-        swFcFollowStock.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+        swFcCustomColor.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
                 if (suppressUiCallbacks) {
                     return;
                 }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
                 if (isChecked) {
+                    data.fcColor = data.fcLastColor != 0 ? data.fcLastColor : ConfigStore.DEF_CUSTOM_COLOR;
+                    fcColorPickerUserExpanded = true;
+                } else {
                     if (data.fcColor != 0) {
                         data.fcLastColor = data.fcColor;
                     }
                     data.fcColor = 0;
-                } else {
-                    data.fcColor = data.fcLastColor != 0 ? data.fcLastColor : ConfigStore.DEF_CUSTOM_COLOR;
+                    fcColorPickerUserExpanded = false;
                 }
                 persistImmediate();
             }
         });
 
-        rowFcColor.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (!data.fcEnabled || data.fcColor == 0) {
-                    return;
-                }
-                int initColor = data.fcColor != 0 ? data.fcColor : data.fcLastColor;
-                ColorPickerDialog.show(MainActivity.this, initColor, new ColorPickerDialog.OnColorSelectedListener() {
-                    @Override
-                    public void onColorSelected(int argbColor) {
-                        data.fcColor = ConfigStore.normalizeColor(argbColor);
-                        if (data.fcColor != 0) {
-                            data.fcLastColor = data.fcColor;
-                        }
-                        persistImmediate();
+        if (fcColorPicker != null) {
+            fcColorPicker.setShowAlpha(false);
+            fcColorPicker.setOnColorChangeListener(new CouiHsvColorPickerView.OnColorChangeListener() {
+                @Override
+                public void onColorChanged(int argbColor, boolean fromUser) {
+                    if (!fromUser || suppressUiCallbacks || !data.fcEnabled) {
+                        return;
                     }
-                });
-            }
-        });
+                    data.fcColor = ConfigStore.normalizeColor(argbColor);
+                    if (data.fcColor != 0) {
+                        data.fcLastColor = data.fcColor;
+                    }
+                    updateFcTintHeaderUi(false);
+                    persistSliderTick();
+                }
+
+                @Override
+                public void onTrackingStopped(int argbColor) {
+                    mainHandler.removeCallbacks(debouncedSync);
+                    syncRemoteAsync();
+                }
+            });
+        }
 
         findViewById(R.id.btnResetFc).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -1800,172 +2515,226 @@ public class MainActivity extends Activity {
         return data.fcMaskGradStrength;
     }
 
-    private void toggleFcSubmenu(int targetIdx) {
-        final int nextOpen = (openFcMenuIndex == targetIdx) ? -1 : targetIdx;
-        openFcMenuIndex = nextOpen;
+    private boolean isFcSubpageOpen() {
+        return openFcMenuIndex >= 0;
+    }
+
+    private void openFcSubpage(int targetIdx, boolean animate) {
+        if (targetIdx < 0 || targetIdx >= fcMenuPanels.length || !data.fcEnabled || layoutFcSubpageRoot == null) {
+            return;
+        }
+        if (subpageTransitionAnimator != null) {
+            subpageTransitionAnimator.cancel();
+            subpageTransitionAnimator = null;
+        }
+        final int gen = ++subpageAnimGen;
+        openFcMenuIndex = targetIdx;
+        updateSubpageBackCallback(true);
+
+        int[] titleRes = new int[]{
+                R.string.menu_fc_opacity_blur_title,
+                R.string.menu_fc_highlight_title,
+                R.string.menu_fc_masks_title
+        };
+        int[] subtitleRes = new int[]{
+                R.string.page_subtitle_fc_opacity_blur,
+                R.string.page_subtitle_fc_highlight,
+                R.string.page_subtitle_fc_masks
+        };
+        if (tvSubpageTitle != null) {
+            tvSubpageTitle.setText(titleRes[targetIdx]);
+        }
+        if (tvSubpageSubtitle != null) {
+            tvSubpageSubtitle.setText(subtitleRes[targetIdx]);
+        }
         for (int i = 0; i < fcMenuPanels.length; i++) {
-            final int idx = i;
-            final View panel = fcMenuPanels[i];
-            ImageView chevron = fcMenuChevrons[i];
-            boolean shouldOpen = (i == nextOpen);
-            if (chevron != null) {
-                chevron.animate().cancel();
-                chevron.animate()
-                        .rotation(shouldOpen ? 90f : 0f)
-                        .setDuration(380L)
-                        .setInterpolator(MENU_EASE)
-                        .start();
-            }
-            if (panel == null) {
-                continue;
-            }
-            if (fcMenuAnimators[i] != null) {
-                fcMenuAnimators[i].cancel();
-                fcMenuAnimators[i] = null;
-            }
-            panel.animate().cancel();
-            if (panel instanceof ViewGroup) {
-                ((ViewGroup) panel).setClipChildren(true);
-                ((ViewGroup) panel).setClipToPadding(true);
-            }
-
-            if (shouldOpen) {
-                ViewGroup.LayoutParams lp = panel.getLayoutParams();
-                if (panel.getVisibility() == View.VISIBLE && panel.getHeight() > 0 && panel.getAlpha() >= 0.99f
-                        && lp != null && lp.height == ViewGroup.LayoutParams.WRAP_CONTENT) {
-                    panel.setTranslationY(0f);
-                    continue;
-                }
-                int startH = (panel.getVisibility() == View.VISIBLE) ? Math.max(0, panel.getHeight()) : 0;
-                final float startA = (panel.getVisibility() == View.VISIBLE) ? panel.getAlpha() : 0f;
-                final float startY = (panel.getVisibility() == View.VISIBLE) ? panel.getTranslationY() : -dp(8);
-
-                int availW = 0;
-                if (panel.getParent() instanceof View) {
-                    View parent = (View) panel.getParent();
-                    availW = Math.max(0, parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight());
-                }
-                if (availW <= 0) {
-                    availW = getResources().getDisplayMetrics().widthPixels - dp(56);
-                }
-                panel.measure(
-                        View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-                final int targetH = Math.max(1, panel.getMeasuredHeight());
-
-                if (lp != null) {
-                    lp.height = startH;
-                    panel.setLayoutParams(lp);
-                }
-                panel.setAlpha(startA);
-                panel.setTranslationY(startY);
-                panel.setVisibility(View.VISIBLE);
-
-                final ValueAnimator anim = ValueAnimator.ofInt(startH, targetH);
-                fcMenuAnimators[i] = anim;
-                anim.setDuration(400L);
-                anim.setInterpolator(MENU_EASE);
-                anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                    @Override
-                    public void onAnimationUpdate(ValueAnimator animation) {
-                        ViewGroup.LayoutParams curLp = panel.getLayoutParams();
-                        if (curLp != null) {
-                            curLp.height = (Integer) animation.getAnimatedValue();
-                            panel.requestLayout();
-                        }
-                        float frac = animation.getAnimatedFraction();
-                        float alphaFrac = Math.min(1f, frac * 1.35f);
-                        panel.setAlpha(startA + (1f - startA) * alphaFrac);
-                        panel.setTranslationY(startY * (1f - frac));
-                    }
-                });
-                anim.addListener(new AnimatorListenerAdapter() {
-                    private boolean cancelled;
-
-                    @Override
-                    public void onAnimationCancel(Animator animation) {
-                        cancelled = true;
-                    }
-
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        if (fcMenuAnimators[idx] == anim) {
-                            fcMenuAnimators[idx] = null;
-                        }
-                        if (!cancelled && openFcMenuIndex == idx) {
-                            ViewGroup.LayoutParams curLp = panel.getLayoutParams();
-                            if (curLp != null) {
-                                curLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                                panel.setLayoutParams(curLp);
-                            }
-                            panel.setAlpha(1f);
-                            panel.setTranslationY(0f);
-                        }
-                    }
-                });
-                anim.start();
-            } else if (panel.getVisibility() == View.VISIBLE) {
-                final int startH = Math.max(0, panel.getHeight());
-                final float startA = panel.getAlpha();
-                final float startY = panel.getTranslationY();
-                final float endY = -dp(6);
-                if (startH <= 0) {
-                    panel.setVisibility(View.GONE);
-                    panel.setAlpha(1f);
-                    panel.setTranslationY(0f);
-                    ViewGroup.LayoutParams curLp = panel.getLayoutParams();
-                    if (curLp != null) {
-                        curLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                        panel.setLayoutParams(curLp);
-                    }
-                    continue;
-                }
-                final ValueAnimator anim = ValueAnimator.ofInt(startH, 0);
-                fcMenuAnimators[i] = anim;
-                anim.setDuration(320L);
-                anim.setInterpolator(MENU_EASE);
-                anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                    @Override
-                    public void onAnimationUpdate(ValueAnimator animation) {
-                        ViewGroup.LayoutParams curLp = panel.getLayoutParams();
-                        if (curLp != null) {
-                            curLp.height = (Integer) animation.getAnimatedValue();
-                            panel.requestLayout();
-                        }
-                        float frac = animation.getAnimatedFraction();
-                        float alphaKeep = Math.max(0f, 1f - frac * 1.4f);
-                        panel.setAlpha(startA * alphaKeep);
-                        panel.setTranslationY(startY + (endY - startY) * frac);
-                    }
-                });
-                anim.addListener(new AnimatorListenerAdapter() {
-                    private boolean cancelled;
-
-                    @Override
-                    public void onAnimationCancel(Animator animation) {
-                        cancelled = true;
-                    }
-
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        if (fcMenuAnimators[idx] == anim) {
-                            fcMenuAnimators[idx] = null;
-                        }
-                        if (!cancelled && openFcMenuIndex != idx) {
-                            panel.setVisibility(View.GONE);
-                            panel.setAlpha(1f);
-                            panel.setTranslationY(0f);
-                            ViewGroup.LayoutParams curLp = panel.getLayoutParams();
-                            if (curLp != null) {
-                                curLp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-                                panel.setLayoutParams(curLp);
-                            }
-                        }
-                    }
-                });
-                anim.start();
+            if (fcMenuPanels[i] != null) {
+                fcMenuPanels[i].setVisibility(i == targetIdx ? View.VISIBLE : View.GONE);
             }
         }
+        if (scrollFcSubpage != null) {
+            scrollFcSubpage.resetScrollAndBounce();
+        }
+        applySubpageInsets();
+        applySubpageHeaderCollapseProgress(0f);
+
+        layoutFcSubpageRoot.setVisibility(View.VISIBLE);
+        if (livingFlowUi && layoutFcSubpageRoot instanceof SwipeableBlurFrameLayout) {
+            ((SwipeableBlurFrameLayout) layoutFcSubpageRoot).setEdgeSwipeEnabled(true);
+        }
+        if (!animate) {
+            layoutFcSubpageRoot.setTranslationX(0f);
+            layoutFcSubpageRoot.setAlpha(1f);
+            if (vSubpageScrim != null) {
+                vSubpageScrim.setAlpha(0f);
+                vSubpageScrim.setVisibility(View.GONE);
+            }
+            if (layoutRootBlur != null) {
+                layoutRootBlur.setTranslationX(0f);
+                layoutRootBlur.setVisibility(View.INVISIBLE);
+            }
+            layoutFcSubpageRoot.post(this::syncSubpageHeaderGeometryAndPadding);
+            return;
+        }
+
+        final float slideDist = (layoutAppRoot != null && layoutAppRoot.getWidth() > 0)
+                ? layoutAppRoot.getWidth()
+                : getResources().getDisplayMetrics().widthPixels;
+        if (layoutRootBlur != null) {
+            layoutRootBlur.setVisibility(View.VISIBLE);
+            layoutRootBlur.setTranslationX(0f);
+        }
+        if (vSubpageScrim != null) {
+            vSubpageScrim.setAlpha(0f);
+            vSubpageScrim.setVisibility(View.VISIBLE);
+        }
+        layoutFcSubpageRoot.setTranslationX(slideDist);
+        layoutFcSubpageRoot.setAlpha(0.94f);
+
+        final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+        subpageTransitionAnimator = anim;
+        anim.setDuration(320L);
+        anim.setInterpolator(FLUID_EASE);
+        anim.addUpdateListener(animation -> {
+            float t = (Float) animation.getAnimatedValue();
+            layoutFcSubpageRoot.setTranslationX(slideDist * (1f - t));
+            layoutFcSubpageRoot.setAlpha(0.94f + 0.06f * Math.min(1f, t * 2.5f));
+            if (layoutRootBlur != null) {
+                layoutRootBlur.setTranslationX(-slideDist * SUBPAGE_PARALLAX_RATIO * t);
+            }
+            if (vSubpageScrim != null) {
+                vSubpageScrim.setAlpha(SUBPAGE_SCRIM_MAX_ALPHA * t);
+            }
+        });
+        anim.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (subpageTransitionAnimator == anim) {
+                    subpageTransitionAnimator = null;
+                }
+                if (!cancelled && gen == subpageAnimGen && isFcSubpageOpen()) {
+                    layoutFcSubpageRoot.setTranslationX(0f);
+                    layoutFcSubpageRoot.setAlpha(1f);
+                    if (vSubpageScrim != null) {
+                        vSubpageScrim.setAlpha(0f);
+                        vSubpageScrim.setVisibility(View.GONE);
+                    }
+                    if (layoutRootBlur != null) {
+                        layoutRootBlur.setVisibility(View.INVISIBLE);
+                        layoutRootBlur.setTranslationX(0f);
+                    }
+                    syncSubpageHeaderGeometryAndPadding();
+                }
+            }
+        });
+        anim.start();
+    }
+
+    private void closeFcSubpage(boolean animate) {
+        if (openFcMenuIndex < 0
+                && (layoutFcSubpageRoot == null || layoutFcSubpageRoot.getVisibility() != View.VISIBLE)) {
+            return;
+        }
+        if (subpageTransitionAnimator != null) {
+            subpageTransitionAnimator.cancel();
+            subpageTransitionAnimator = null;
+        }
+        final int gen = ++subpageAnimGen;
+        openFcMenuIndex = -1;
+        updateSubpageBackCallback(false);
+        if (layoutFcSubpageRoot instanceof SwipeableBlurFrameLayout) {
+            ((SwipeableBlurFrameLayout) layoutFcSubpageRoot).setEdgeSwipeEnabled(false);
+        }
+
+        if (layoutRootBlur != null) {
+            layoutRootBlur.setVisibility(View.VISIBLE);
+        }
+        if (!animate) {
+            if (layoutRootBlur != null) {
+                layoutRootBlur.setTranslationX(0f);
+            }
+            if (vSubpageScrim != null) {
+                vSubpageScrim.setAlpha(0f);
+                vSubpageScrim.setVisibility(View.GONE);
+            }
+            if (layoutFcSubpageRoot != null) {
+                layoutFcSubpageRoot.setVisibility(View.GONE);
+                layoutFcSubpageRoot.setTranslationX(0f);
+                layoutFcSubpageRoot.setAlpha(1f);
+            }
+            syncActiveHeaderToScrollNow();
+            return;
+        }
+
+        final float slideDist = (layoutAppRoot != null && layoutAppRoot.getWidth() > 0)
+                ? layoutAppRoot.getWidth()
+                : getResources().getDisplayMetrics().widthPixels;
+        final float startSubX = layoutFcSubpageRoot != null ? layoutFcSubpageRoot.getTranslationX() : 0f;
+        final float progressShown = 1f - Math.max(0f, Math.min(1f, startSubX / Math.max(1f, slideDist)));
+        final float startMainX = -slideDist * SUBPAGE_PARALLAX_RATIO * progressShown;
+        final float startScrimAlpha = SUBPAGE_SCRIM_MAX_ALPHA * progressShown;
+        if (layoutRootBlur != null) {
+            layoutRootBlur.setTranslationX(startMainX);
+        }
+        if (vSubpageScrim != null) {
+            vSubpageScrim.setAlpha(startScrimAlpha);
+            vSubpageScrim.setVisibility(View.VISIBLE);
+        }
+
+        final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+        subpageTransitionAnimator = anim;
+        anim.setDuration(280L);
+        anim.setInterpolator(FLUID_EASE);
+        anim.addUpdateListener(animation -> {
+            float t = (Float) animation.getAnimatedValue();
+            if (layoutFcSubpageRoot != null) {
+                layoutFcSubpageRoot.setTranslationX(startSubX + (slideDist - startSubX) * t);
+            }
+            if (layoutRootBlur != null) {
+                layoutRootBlur.setTranslationX(startMainX * (1f - t));
+            }
+            if (vSubpageScrim != null) {
+                vSubpageScrim.setAlpha(startScrimAlpha * (1f - t));
+            }
+        });
+        anim.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (subpageTransitionAnimator == anim) {
+                    subpageTransitionAnimator = null;
+                }
+                if (!cancelled && gen == subpageAnimGen && !isFcSubpageOpen()) {
+                    if (layoutFcSubpageRoot != null) {
+                        layoutFcSubpageRoot.setVisibility(View.GONE);
+                        layoutFcSubpageRoot.setTranslationX(0f);
+                        layoutFcSubpageRoot.setAlpha(1f);
+                    }
+                    if (vSubpageScrim != null) {
+                        vSubpageScrim.setAlpha(0f);
+                        vSubpageScrim.setVisibility(View.GONE);
+                    }
+                    if (layoutRootBlur != null) {
+                        layoutRootBlur.setTranslationX(0f);
+                    }
+                    syncActiveHeaderToScrollNow();
+                }
+            }
+        });
+        anim.start();
     }
 
     private void bindAboutViews() {
@@ -1973,10 +2742,24 @@ public class MainActivity extends Activity {
         tvDeviceModel = findViewById(R.id.tvDeviceModel);
         tvAboutChannel = findViewById(R.id.tvAboutChannel);
         tvAboutUpdateChip = findViewById(R.id.tvAboutUpdateChip);
+        tvAboutUiStyleVal = findViewById(R.id.tvAboutUiStyleVal);
         tvAboutLanguageVal = findViewById(R.id.tvAboutLanguageVal);
         tvAboutDarkModeVal = findViewById(R.id.tvAboutDarkModeVal);
 
-        tvSysVersion.setText(Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+        cardAboutDynamicHero = findViewById(R.id.cardAboutDynamicHero);
+        vAboutDynamicBg = findViewById(R.id.vAboutDynamicBg);
+        layoutAboutHeroLogo = findViewById(R.id.layoutAboutHeroLogo);
+        tvAboutHeroVer = findViewById(R.id.tvAboutHeroVer);
+        tvAboutHeroUpdateStatus = findViewById(R.id.tvAboutHeroUpdateStatus);
+        tvAboutBuildSub = findViewById(R.id.tvAboutBuildSub);
+        cardAboutModuleStatus = findViewById(R.id.cardAboutModuleStatus);
+        vAboutStatusEmblem = findViewById(R.id.vAboutStatusEmblem);
+        ivAboutStatusIcon = findViewById(R.id.ivAboutStatusIcon);
+        tvAboutStatusTitle = findViewById(R.id.tvAboutStatusTitle);
+        tvAboutStatusBadge = findViewById(R.id.tvAboutStatusBadge);
+        tvAboutStatusSubtitle = findViewById(R.id.tvAboutStatusSubtitle);
+
+        tvSysVersion.setText((livingFlowUi ? "Android " : "") + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
         String brand = Build.BRAND != null ? Build.BRAND.trim() : "";
         String model = Build.MODEL != null ? Build.MODEL.trim() : "";
         if (!brand.isEmpty() && model.toLowerCase().startsWith(brand.toLowerCase())) {
@@ -1984,9 +2767,32 @@ public class MainActivity extends Activity {
         } else {
             tvDeviceModel.setText((brand + " " + model).trim());
         }
+        if (tvAboutBuildSub != null) {
+            tvAboutBuildSub.setText("v" + getInstalledVersionName() + " (" + getInstalledVersionCode() + ")");
+        }
 
+        updateUiStyleLabel();
         updateLanguageLabel();
         updateDarkModeLabel();
+
+        if (cardAboutDynamicHero != null) {
+            cardAboutDynamicHero.setOnClickListener(v -> {
+                if (livingFlowUi) {
+                    LivingFlowUpdatePages.showSoftwareUpdatePage(this);
+                } else {
+                    checkUpdateFromLsposedRepo(true);
+                }
+            });
+            cardAboutDynamicHero.setOnLongClickListener(v -> {
+                if (!livingFlowUi || vAboutDynamicBg == null) {
+                    return false;
+                }
+                vAboutDynamicBg.playEasterEgg();
+                playAboutHeroEntrance(true);
+                ColorOsLivingFlowEngine.performHaptic(v, ColorOsLivingFlowEngine.HapticKind.CONFIRM);
+                return true;
+            });
+        }
 
         findViewById(R.id.rowOrigAuthor).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -2006,12 +2812,15 @@ public class MainActivity extends Activity {
                 openCoolapkProfile(UID_MOD_AUTHOR);
             }
         });
-        findViewById(R.id.tvHeroVersionChip).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showChangelogDialog();
-            }
-        });
+        View heroVersionChip = findViewById(R.id.tvHeroVersionChip);
+        if (heroVersionChip != null) {
+            heroVersionChip.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    showChangelogDialog();
+                }
+            });
+        }
         findViewById(R.id.rowAboutChangelog).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2021,9 +2830,23 @@ public class MainActivity extends Activity {
         findViewById(R.id.rowAboutCheckUpdate).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                checkUpdateFromLsposedRepo(true);
+                if (livingFlowUi) {
+                    LivingFlowUpdatePages.showSoftwareUpdatePage(MainActivity.this);
+                } else {
+                    checkUpdateFromLsposedRepo(true);
+                }
             }
         });
+        View rowAboutUiStyle = findViewById(R.id.rowAboutUiStyle);
+        if (rowAboutUiStyle != null) {
+            CouiBottomSheet.trackTouchPoint(rowAboutUiStyle);
+            rowAboutUiStyle.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    showUiStyleDialog(v);
+                }
+            });
+        }
         View rowAboutLanguage = findViewById(R.id.rowAboutLanguage);
         CouiBottomSheet.trackTouchPoint(rowAboutLanguage);
         rowAboutLanguage.setOnClickListener(new View.OnClickListener() {
@@ -2061,9 +2884,29 @@ public class MainActivity extends Activity {
                     if (suppressUiCallbacks || isChecked == ConfigStore.isMonetEnabled(MainActivity.this)) {
                         return;
                     }
+                    if (livingFlowUi) {
+                        ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                    }
                     ConfigStore.setMonetEnabled(MainActivity.this, isChecked);
                     DynamicThemeHelper.applyAccent(findViewById(android.R.id.content), MainActivity.this, swAboutMonet);
                     updateNavIndicator(activeTab, activeTab, 1, false, false);
+                    if (livingFlowUi) {
+                        int accentNow = DynamicThemeHelper.getAccent(MainActivity.this);
+                        lastAppliedAccent = accentNow;
+                        boolean darkNow = ConfigStore.isDarkThemeActive(MainActivity.this);
+                        View b1 = findViewById(R.id.btnRestartUiLock);
+                        View b2 = findViewById(R.id.btnRestartUiFc);
+                        if (b1 != null) {
+                            ColorOsLivingFlowEngine.applyLuminousPillButton(b1, true, accentNow, darkNow, true);
+                        }
+                        if (b2 != null) {
+                            ColorOsLivingFlowEngine.applyLuminousPillButton(b2, true, accentNow, darkNow, true);
+                        }
+                        syncStatusAndAboutUi();
+                        if (sCachedLatestRelease != null) {
+                            applyUpdateChipState(sCachedLatestRelease);
+                        }
+                    }
                 }
             });
         }
@@ -2083,6 +2926,9 @@ public class MainActivity extends Activity {
             public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
                 if (suppressUiCallbacks) {
                     return;
+                }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
                 }
                 data.fcDebugMode = isChecked;
                 if (!isChecked) {
@@ -2110,6 +2956,15 @@ public class MainActivity extends Activity {
                 confirmResetAll();
             }
         });
+    }
+
+    private void updateUiStyleLabel() {
+        if (tvAboutUiStyleVal == null) {
+            return;
+        }
+        tvAboutUiStyleVal.setText(ConfigStore.isLivingFlowUi(this)
+                ? R.string.ui_style_living_flow
+                : R.string.ui_style_classic);
     }
 
     private void updateLanguageLabel() {
@@ -2140,14 +2995,45 @@ public class MainActivity extends Activity {
                                        String unit, final OnValueInputListener listener) {
         final CouiBottomSheet.Palette pal = CouiBottomSheet.Palette.fromModuleTheme(this);
         final CouiBottomSheet.SheetHandle sheet = CouiBottomSheet.create(this, pal);
-        CouiBottomSheet.addHeader(
-                this, sheet.card, pal,
-                getString(titleRes),
-                getString(R.string.dialog_input_range_fmt, minVal, maxVal, unit),
-                currentVal + (unit != null ? unit : ""));
+        final Runnable[] confirmRef = new Runnable[1];
+        String rangeHint = getString(R.string.dialog_input_range_fmt, minVal, maxVal, unit);
+        String curBadge = currentVal + (unit != null ? unit : "");
+        if (pal.livingFlow) {
+            CouiBottomSheet.addLivingFlowTopBar(
+                    this, sheet,
+                    getString(titleRes),
+                    getString(R.string.btn_cancel),
+                    getString(R.string.btn_confirm),
+                    1,
+                    v -> {
+                        if (confirmRef[0] != null) {
+                            confirmRef[0].run();
+                        }
+                    });
+            TextView tvHint = new TextView(this);
+            tvHint.setText(rangeHint + "  ·  " + curBadge);
+            tvHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+            tvHint.setLineSpacing(0f, 1.25f);
+            tvHint.setTextColor(pal.textSecondary);
+            tvHint.setPadding(dp(4), 0, dp(4), 0);
+            LinearLayout.LayoutParams hintLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hintLp.topMargin = dp(2);
+            hintLp.bottomMargin = dp(10);
+            sheet.card.addView(tvHint, hintLp);
+        } else {
+            CouiBottomSheet.addHeader(
+                    this, sheet.card, pal,
+                    getString(titleRes),
+                    rangeHint,
+                    curBadge);
+        }
 
-        final EditText et = CouiBottomSheet.addPillInputBox(
-                this, sheet.card, pal, String.valueOf(currentVal), minVal + " ~ " + maxVal);
+        final EditText et = pal.livingFlow
+                ? CouiBottomSheet.addLivingFlowBorderlessInputCard(
+                        this, sheet.card, pal, String.valueOf(currentVal), minVal + " ~ " + maxVal)
+                : CouiBottomSheet.addPillInputBox(
+                        this, sheet.card, pal, String.valueOf(currentVal), minVal + " ~ " + maxVal);
         int inputType = InputType.TYPE_CLASS_NUMBER;
         if (minVal < 0) {
             inputType |= InputType.TYPE_NUMBER_FLAG_SIGNED;
@@ -2182,10 +3068,14 @@ public class MainActivity extends Activity {
             }
         });
 
-        CouiBottomSheet.addButtonRow(
-                this, sheet.card, pal,
-                getString(R.string.btn_cancel), 0, v -> sheet.dialog.dismiss(),
-                getString(R.string.btn_confirm), 1, v -> submit.run());
+        if (pal.livingFlow) {
+            confirmRef[0] = submit;
+        } else {
+            CouiBottomSheet.addButtonRow(
+                    this, sheet.card, pal,
+                    getString(R.string.btn_cancel), 0, v -> sheet.dialog.dismiss(),
+                    getString(R.string.btn_confirm), 1, v -> submit.run());
+        }
 
         if (sheet.dialog.getWindow() != null) {
             sheet.dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
@@ -2206,6 +3096,29 @@ public class MainActivity extends Activity {
         } else {
             tvAboutDarkModeVal.setText(R.string.dark_mode_system);
         }
+    }
+
+    private void showUiStyleDialog(View anchor) {
+        final int curStyle = ConfigStore.getAppUiStyle(this);
+        final int curIdx = (curStyle == ConfigStore.UI_STYLE_LIVING_FLOW) ? 0 : 1;
+        final String[] labels = new String[]{
+                getString(R.string.ui_style_living_flow_desc),
+                getString(R.string.ui_style_classic_desc)
+        };
+        CouiBottomSheet.showPopupMenu(this, anchor, CouiBottomSheet.Palette.fromModuleTheme(this),
+                labels, curIdx, which -> {
+                    int nextStyle = (which == 0) ? ConfigStore.UI_STYLE_LIVING_FLOW : ConfigStore.UI_STYLE_CLASSIC;
+                    if (nextStyle != curStyle) {
+                        ConfigStore.setAppUiStyle(MainActivity.this, nextStyle);
+                        sPendingTabAfterRecreate = activeTab;
+                        mainHandler.postDelayed(() -> {
+                            if (!isFinishing() && !isDestroyed()) {
+                                recreate();
+                                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                            }
+                        }, 90L);
+                    }
+                });
     }
 
     private void showDarkModeDialog(View anchor) {
@@ -2233,8 +3146,12 @@ public class MainActivity extends Activity {
                     if (chosen != ConfigStore.getAppDarkMode(MainActivity.this)) {
                         ConfigStore.setAppDarkMode(MainActivity.this, chosen);
                         sPendingTabAfterRecreate = activeTab;
-                        recreate();
-                        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                        mainHandler.postDelayed(() -> {
+                            if (!isFinishing() && !isDestroyed()) {
+                                recreate();
+                                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                            }
+                        }, 90L);
                     }
                 });
     }
@@ -2267,8 +3184,12 @@ public class MainActivity extends Activity {
                     if (!chosen.equals(ConfigStore.getAppLanguage(MainActivity.this))) {
                         ConfigStore.setAppLanguage(MainActivity.this, chosen);
                         sPendingTabAfterRecreate = activeTab;
-                        recreate();
-                        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                        mainHandler.postDelayed(() -> {
+                            if (!isFinishing() && !isDestroyed()) {
+                                recreate();
+                                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                            }
+                        }, 90L);
                     }
                 });
     }
@@ -2276,6 +3197,34 @@ public class MainActivity extends Activity {
     private void confirmResetAll() {
         CouiBottomSheet.Palette pal = CouiBottomSheet.Palette.fromModuleTheme(this);
         CouiBottomSheet.SheetHandle sheet = CouiBottomSheet.create(this, pal);
+        final View.OnClickListener resetAction = v -> {
+            sheet.dialog.dismiss();
+            int ver = data.fcVer;
+            data = ConfigStore.createDefaults();
+            data.fcVer = ver;
+            FluidCloudDebugTester.clearAll(MainActivity.this);
+            persistImmediate();
+            Toast.makeText(MainActivity.this, R.string.toast_reset_done, Toast.LENGTH_SHORT).show();
+        };
+        if (pal.livingFlow) {
+            CouiBottomSheet.addLivingFlowTopBar(
+                    this, sheet,
+                    getString(R.string.dialog_reset_all_title),
+                    getString(R.string.btn_cancel),
+                    getString(R.string.btn_confirm_reset), 2, resetAction);
+            LinearLayout msgCard = CouiBottomSheet.createSubcardGroup(this, pal);
+            msgCard.setPadding(dp(18), dp(18), dp(18), dp(18));
+            TextView msgTv = new TextView(this);
+            msgTv.setText(R.string.dialog_reset_all_msg);
+            msgTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+            msgTv.setLineSpacing(0f, 1.35f);
+            msgTv.setTextColor(pal.textPrimary);
+            msgCard.addView(msgTv);
+            sheet.card.addView(msgCard, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            sheet.dialog.show();
+            return;
+        }
         CouiBottomSheet.addHeader(
                 this, sheet.card, pal,
                 getString(R.string.dialog_reset_all_title),
@@ -2284,19 +3233,15 @@ public class MainActivity extends Activity {
         CouiBottomSheet.addButtonRow(
                 this, sheet.card, pal,
                 getString(R.string.btn_cancel), 0, v -> sheet.dialog.dismiss(),
-                getString(R.string.btn_confirm_reset), 2, v -> {
-                    sheet.dialog.dismiss();
-                    int ver = data.fcVer;
-                    data = ConfigStore.createDefaults();
-                    data.fcVer = ver;
-                    FluidCloudDebugTester.clearAll(MainActivity.this);
-                    persistImmediate();
-                    Toast.makeText(MainActivity.this, R.string.toast_reset_done, Toast.LENGTH_SHORT).show();
-                });
+                getString(R.string.btn_confirm_reset), 2, resetAction);
         sheet.dialog.show();
     }
 
     private void showChangelogDialog() {
+        if (livingFlowUi) {
+            LivingFlowUpdatePages.showChangelogPage(this);
+            return;
+        }
         CouiBottomSheet.Palette pal = CouiBottomSheet.Palette.fromModuleTheme(this);
         CouiBottomSheet.SheetHandle sheet = CouiBottomSheet.createCenter(this, pal);
         CouiBottomSheet.addHeader(
@@ -2316,6 +3261,7 @@ public class MainActivity extends Activity {
         sheet.card.addView(scroll, scrollLp);
 
         int[] verTitles = new int[]{
+                R.string.changelog_v111_title,
                 R.string.changelog_v110_title,
                 R.string.changelog_v109_title,
                 R.string.changelog_v108_title,
@@ -2329,6 +3275,7 @@ public class MainActivity extends Activity {
                 R.string.changelog_v100_title
         };
         int[] verBodies = new int[]{
+                R.string.changelog_v111_body,
                 R.string.changelog_v110_body,
                 R.string.changelog_v109_body,
                 R.string.changelog_v108_body,
@@ -2380,7 +3327,11 @@ public class MainActivity extends Activity {
         parent.addView(card, cardLp);
     }
 
-    private static final class RepoReleaseInfo {
+    interface UpdateCheckCallback {
+        void onResult(RepoReleaseInfo info);
+    }
+
+    static final class RepoReleaseInfo {
         int versionCode;
         String versionName;
         String changelogRaw;
@@ -2389,7 +3340,23 @@ public class MainActivity extends Activity {
         String repoPageUrl;
     }
 
-    private int getInstalledVersionCode() {
+    static RepoReleaseInfo getCachedLatestRelease() {
+        return sCachedLatestRelease;
+    }
+
+    void openRepoOrUrl(String url) {
+        if (!tryStartView(url)) {
+            Toast.makeText(this, R.string.toast_open_link_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    void openRepoPage(RepoReleaseInfo info) {
+        String targetUrl = (info != null && info.repoPageUrl != null && !info.repoPageUrl.isEmpty())
+                ? info.repoPageUrl : LSPOSED_REPO_PAGE_URL;
+        openRepoOrUrl(targetUrl);
+    }
+
+    int getInstalledVersionCode() {
         try {
             PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
             if (Build.VERSION.SDK_INT >= 28) {
@@ -2398,11 +3365,11 @@ public class MainActivity extends Activity {
             //noinspection deprecation
             return pi.versionCode;
         } catch (Throwable ignored) {
-            return 1100;
+            return 1101;
         }
     }
 
-    private String getInstalledVersionName() {
+    String getInstalledVersionName() {
         try {
             PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
             if (pi.versionName != null && !pi.versionName.trim().isEmpty()) {
@@ -2410,12 +3377,12 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-        return "1.1.0";
+        return "1.1.1";
     }
 
-    private static String formatVerLabel(String ver) {
+    static String formatVerLabel(String ver) {
         if (ver == null || ver.trim().isEmpty()) {
-            return "v1.1.0";
+            return "v1.1.1";
         }
         String t = ver.trim();
         if (t.startsWith("v") || t.startsWith("V")) {
@@ -2443,7 +3410,7 @@ public class MainActivity extends Activity {
         return 0;
     }
 
-    private boolean isNewerRelease(RepoReleaseInfo info) {
+    boolean isNewerRelease(RepoReleaseInfo info) {
         if (info == null) {
             return false;
         }
@@ -2455,17 +3422,82 @@ public class MainActivity extends Activity {
     }
 
     private void applyUpdateChipState(RepoReleaseInfo info) {
-        if (tvAboutUpdateChip == null || info == null) {
+        if (info == null) {
             return;
         }
-        tvAboutUpdateChip.setVisibility(View.VISIBLE);
-        if (isNewerRelease(info)) {
-            tvAboutUpdateChip.setText(getString(
-                    R.string.chip_update_available_fmt, formatVerLabel(info.versionName)));
-        } else {
-            tvAboutUpdateChip.setText(R.string.chip_update_latest);
+        boolean newer = isNewerRelease(info);
+        if (tvAboutUpdateChip != null) {
+            tvAboutUpdateChip.setVisibility(View.VISIBLE);
+            if (newer) {
+                tvAboutUpdateChip.setText(getString(
+                        R.string.chip_update_available_fmt, formatVerLabel(info.versionName)));
+            } else {
+                tvAboutUpdateChip.setText(R.string.chip_update_latest);
+            }
+            styleUpdateChip(newer);
         }
-        DynamicThemeHelper.applyAccent(tvAboutUpdateChip, this);
+        if (tvAboutHeroUpdateStatus != null) {
+            if (newer) {
+                tvAboutHeroUpdateStatus.setText(getString(
+                        R.string.about_hero_new_ver_fmt, formatVerLabel(info.versionName)));
+                GradientDrawable pill = new GradientDrawable();
+                pill.setShape(GradientDrawable.RECTANGLE);
+                pill.setCornerRadius(999f * getResources().getDisplayMetrics().density);
+                pill.setColor(0x34FFFFFF);
+                pill.setStroke(Math.max(1, dp(1)), 0x55FFFFFF);
+                tvAboutHeroUpdateStatus.setBackground(pill);
+            } else {
+                tvAboutHeroUpdateStatus.setText(R.string.dialog_update_latest_title);
+                tvAboutHeroUpdateStatus.setBackground(null);
+            }
+        }
+    }
+
+    private void styleUpdateChip(boolean highlightAccent) {
+        if (tvAboutUpdateChip == null) {
+            return;
+        }
+        if (livingFlowUi) {
+            tvAboutUpdateChip.setBackground(null);
+            tvAboutUpdateChip.setTextColor(highlightAccent
+                    ? DynamicThemeHelper.getAccent(this)
+                    : getColor(R.color.lf_text_secondary));
+        } else {
+            DynamicThemeHelper.applyAccent(tvAboutUpdateChip, this);
+        }
+    }
+
+    void runRepoUpdateCheck(final UpdateCheckCallback callback) {
+        if (tvAboutUpdateChip != null) {
+            tvAboutUpdateChip.setVisibility(View.VISIBLE);
+            tvAboutUpdateChip.setText(R.string.chip_update_checking);
+            styleUpdateChip(false);
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final RepoReleaseInfo info = fetchLatestReleaseFromRepo();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (isFinishing() || isDestroyed()) {
+                            return;
+                        }
+                        if (info != null) {
+                            sCachedLatestRelease = info;
+                            applyUpdateChipState(info);
+                        } else if (sCachedLatestRelease != null) {
+                            applyUpdateChipState(sCachedLatestRelease);
+                        } else if (tvAboutUpdateChip != null) {
+                            tvAboutUpdateChip.setVisibility(View.GONE);
+                        }
+                        if (callback != null) {
+                            callback.onResult(info);
+                        }
+                    }
+                });
+            }
+        }).start();
     }
 
     private void checkUpdateFromLsposedRepo(final boolean manual) {
@@ -2476,7 +3508,7 @@ public class MainActivity extends Activity {
         if (tvAboutUpdateChip != null) {
             tvAboutUpdateChip.setVisibility(View.VISIBLE);
             tvAboutUpdateChip.setText(R.string.chip_update_checking);
-            DynamicThemeHelper.applyAccent(tvAboutUpdateChip, this);
+            styleUpdateChip(false);
         }
         if (manual) {
             Toast.makeText(this, R.string.toast_update_checking, Toast.LENGTH_SHORT).show();
@@ -2565,7 +3597,7 @@ public class MainActivity extends Activity {
             out.versionName = !name.isEmpty() ? name : tag;
         }
         if (out.versionName == null || out.versionName.isEmpty()) {
-            out.versionName = "1.1.0";
+            out.versionName = "1.1.1";
         }
     }
 
@@ -2723,7 +3755,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private CharSequence formatLocalizedChangelog(RepoReleaseInfo info) {
+    CharSequence formatLocalizedChangelog(RepoReleaseInfo info) {
         if (info == null || info.changelogRaw == null || info.changelogRaw.trim().isEmpty()) {
             return "";
         }
@@ -2934,30 +3966,51 @@ public class MainActivity extends Activity {
     private void showDebugTesterDialog() {
         CouiBottomSheet.Palette pal = CouiBottomSheet.Palette.fromModuleTheme(this);
         CouiBottomSheet.SheetHandle sheet = CouiBottomSheet.create(this, pal);
-        CouiBottomSheet.addHeader(
-                this, sheet.card, pal,
-                getString(R.string.dialog_debug_title),
-                getString(R.string.dialog_debug_hint),
-                null);
+        final View.OnClickListener postAllAction = v -> runWithNotifPermission(() -> {
+            FluidCloudDebugTester.postAllFluidClouds(MainActivity.this);
+            Toast.makeText(MainActivity.this, R.string.toast_debug_posted, Toast.LENGTH_SHORT).show();
+        });
+        final View.OnClickListener clearAllAction = v -> {
+            FluidCloudDebugTester.clearAll(MainActivity.this);
+            Toast.makeText(MainActivity.this, R.string.toast_debug_cleared, Toast.LENGTH_SHORT).show();
+        };
 
-        CouiBottomSheet.addButtonRow(
-                this, sheet.card, pal,
-                getString(R.string.btn_debug_clear_all), 0, v -> {
-                    FluidCloudDebugTester.clearAll(MainActivity.this);
-                    Toast.makeText(MainActivity.this, R.string.toast_debug_cleared, Toast.LENGTH_SHORT).show();
-                },
-                getString(R.string.btn_debug_post_all), 1, v -> {
-                    runWithNotifPermission(() -> {
-                        FluidCloudDebugTester.postAllFluidClouds(MainActivity.this);
-                        Toast.makeText(MainActivity.this, R.string.toast_debug_posted, Toast.LENGTH_SHORT).show();
-                    });
-                });
+        if (pal.livingFlow) {
+            CouiBottomSheet.addLivingFlowTopBar(
+                    this, sheet,
+                    getString(R.string.dialog_debug_title),
+                    getString(R.string.btn_close),
+                    getString(R.string.btn_debug_post_all),
+                    1,
+                    postAllAction);
+            TextView tvHint = new TextView(this);
+            tvHint.setText(R.string.dialog_debug_hint);
+            tvHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+            tvHint.setLineSpacing(0f, 1.3f);
+            tvHint.setTextColor(pal.textSecondary);
+            tvHint.setPadding(dp(4), 0, dp(4), dp(8));
+            sheet.card.addView(tvHint, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        } else {
+            CouiBottomSheet.addHeader(
+                    this, sheet.card, pal,
+                    getString(R.string.dialog_debug_title),
+                    getString(R.string.dialog_debug_hint),
+                    null);
+
+            CouiBottomSheet.addButtonRow(
+                    this, sheet.card, pal,
+                    getString(R.string.btn_debug_clear_all), 0, clearAllAction,
+                    getString(R.string.btn_debug_post_all), 1, postAllAction);
+        }
 
         ScrollView scroll = CouiBottomSheet.createMaxHeightScrollView(
-                this, Math.round(getResources().getDisplayMetrics().heightPixels * 0.44f));
+                this, Math.round(getResources().getDisplayMetrics().heightPixels * (pal.livingFlow ? 0.48f : 0.44f)));
         LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        scrollLp.topMargin = dp(12);
+        if (!pal.livingFlow) {
+            scrollLp.topMargin = dp(12);
+        }
 
         LinearLayout list = CouiBottomSheet.createSubcardGroup(this, pal);
         scroll.addView(list);
@@ -2991,8 +4044,13 @@ public class MainActivity extends Activity {
         }
         sheet.card.addView(scroll, scrollLp);
 
-        CouiBottomSheet.addSingleButton(this, sheet.card, pal,
-                getString(R.string.btn_close), 0, 14, v -> sheet.dialog.dismiss());
+        if (pal.livingFlow) {
+            CouiBottomSheet.addSingleButton(this, sheet.card, pal,
+                    getString(R.string.btn_debug_clear_all), 0, 14, clearAllAction);
+        } else {
+            CouiBottomSheet.addSingleButton(this, sheet.card, pal,
+                    getString(R.string.btn_close), 0, 14, v -> sheet.dialog.dismiss());
+        }
         sheet.dialog.show();
     }
 
@@ -3000,10 +4058,10 @@ public class MainActivity extends Activity {
                                  final int actionIdx, int titleRes, int subRes, boolean addDivider) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
-        row.setBackgroundResource(R.drawable.bg_coui_item_ripple);
+        row.setBackgroundResource(pal.livingFlow ? R.drawable.bg_lf_list_item_press : R.drawable.bg_coui_item_ripple);
         row.setClickable(true);
         row.setFocusable(true);
-        row.setPadding(dp(14), dp(12), dp(14), dp(12));
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
 
         TextView tvTitle = new TextView(this);
         tvTitle.setText(titleRes);
@@ -3085,6 +4143,9 @@ public class MainActivity extends Activity {
     private void switchTab(final int targetTab, boolean animate, boolean fromNavDrag) {
         if (targetTab < TAB_LOCKSCREEN || targetTab > TAB_ABOUT) {
             return;
+        }
+        if (isFcSubpageOpen()) {
+            closeFcSubpage(false);
         }
         if (animate && targetTab == activeTab) {
             return;
@@ -3171,7 +4232,45 @@ public class MainActivity extends Activity {
             subtitleTabFadeAnimator.cancel();
             subtitleTabFadeAnimator = null;
         }
-        if (animHeader) {
+        if (livingFlowUi) {
+            if (animHeader) {
+                tvPageTitle.animate().cancel();
+                tvPageTitle.setTranslationX(dir * dp(12));
+                tvPageTitle.animate()
+                        .translationX(0f)
+                        .setDuration(260L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+
+                tvPageSubtitle.animate().cancel();
+                tvPageSubtitle.setTranslationX(dir * dp(10));
+                tvPageSubtitle.animate()
+                        .translationX(0f)
+                        .setDuration(260L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+
+                headerTitleTabAlpha = 0.25f;
+                subtitleTabAlpha = 0.25f;
+                syncHeaderToScrollY(targetScrollY, true);
+                subtitleTabFadeAnimator = ValueAnimator.ofFloat(0.25f, 1f);
+                subtitleTabFadeAnimator.setDuration(260L);
+                subtitleTabFadeAnimator.setInterpolator(FLUID_EASE);
+                subtitleTabFadeAnimator.addUpdateListener(anim -> {
+                    float a = (Float) anim.getAnimatedValue();
+                    headerTitleTabAlpha = a;
+                    subtitleTabAlpha = a;
+                    applyHeaderCollapseProgress(headerCollapseProgress);
+                });
+                subtitleTabFadeAnimator.start();
+            } else {
+                tvPageTitle.setTranslationX(0f);
+                tvPageSubtitle.setTranslationX(0f);
+                headerTitleTabAlpha = 1f;
+                subtitleTabAlpha = 1f;
+                syncHeaderToScrollY(targetScrollY, false);
+            }
+        } else if (animHeader) {
             tvPageTitle.animate().cancel();
             tvPageTitle.setTranslationX(dir * dp(18));
             tvPageTitle.setAlpha(0.25f);
@@ -3211,6 +4310,39 @@ public class MainActivity extends Activity {
         }
 
         updateNavIndicator(oldTab, targetTab, dir, animate, fromNavDrag);
+        if (livingFlowUi && vAboutDynamicBg != null) {
+            if (targetTab == TAB_ABOUT) {
+                playAboutHeroEntrance(animate && oldTab != targetTab);
+            } else {
+                vAboutDynamicBg.pausePlayback();
+            }
+        }
+    }
+
+    private void playAboutHeroEntrance(boolean animateLogo) {
+        if (vAboutDynamicBg != null) {
+            vAboutDynamicBg.replayIfIdle();
+        }
+        if (layoutAboutHeroLogo == null) {
+            return;
+        }
+        layoutAboutHeroLogo.animate().cancel();
+        if (animateLogo) {
+            layoutAboutHeroLogo.setScaleX(0.86f);
+            layoutAboutHeroLogo.setScaleY(0.86f);
+            layoutAboutHeroLogo.setAlpha(0.25f);
+            layoutAboutHeroLogo.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .alpha(1f)
+                    .setDuration(650L)
+                    .setInterpolator(new PathInterpolator(0.30f, 0f, 0.10f, 1f))
+                    .start();
+        } else {
+            layoutAboutHeroLogo.setScaleX(1f);
+            layoutAboutHeroLogo.setScaleY(1f);
+            layoutAboutHeroLogo.setAlpha(1f);
+        }
     }
 
     private void ensureNavPillWidth(int tabIdx) {
@@ -3234,7 +4366,72 @@ public class MainActivity extends Activity {
         layoutBottomNav.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent ev) {
-                if (layoutNavItems == null || vNavSlidingPill == null || navTabs[0] == null || navTabs[2] == null) {
+                if (layoutNavItems == null || (!livingFlowUi && vNavSlidingPill == null)
+                        || navTabs[0] == null || navTabs[2] == null) {
+                    return false;
+                }
+                if (livingFlowUi) {
+                    switch (ev.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN: {
+                            if (navSpotLight != null) {
+                                navSpotLight.onPress(ev.getX(), ev.getY());
+                            }
+                            if (navElasticController != null) {
+                                navElasticController.onDown();
+                            }
+                            ColorOsLivingFlowEngine.performHaptic(
+                                    layoutBottomNav, ColorOsLivingFlowEngine.HapticKind.TAP);
+                            navDownRawX = ev.getRawX();
+                            navDownRawY = ev.getRawY();
+                            navDragging = false;
+                            return true;
+                        }
+                        case MotionEvent.ACTION_MOVE: {
+                            if (navSpotLight != null) {
+                                navSpotLight.onMove(ev.getX(), ev.getY());
+                            }
+                            float dx = ev.getRawX() - navDownRawX;
+                            float dy = ev.getRawY() - navDownRawY;
+                            if (navElasticController != null) {
+                                navElasticController.onMove(dx, dy);
+                            }
+                            if (!navDragging && Math.hypot(dx, dy) > Math.max(dp(5), touchSlop * 0.5f)) {
+                                navDragging = true;
+                            }
+                            int itemsW = layoutNavItems.getWidth();
+                            if (navDragging && itemsW > 0) {
+                                float localX = Math.max(0f, Math.min(itemsW - 1f, ev.getX() - layoutNavItems.getLeft()));
+                                int hoveredTab = Math.max(0, Math.min(2, (int) (localX / Math.max(1f, itemsW / 3f))));
+                                if (hoveredTab != activeTab) {
+                                    ColorOsLivingFlowEngine.performHaptic(
+                                            layoutBottomNav, ColorOsLivingFlowEngine.HapticKind.TICK);
+                                    switchTab(hoveredTab, true, true);
+                                }
+                            }
+                            return true;
+                        }
+                        case MotionEvent.ACTION_UP:
+                        case MotionEvent.ACTION_CANCEL: {
+                            if (navSpotLight != null) {
+                                navSpotLight.onRelease();
+                            }
+                            if (navElasticController != null) {
+                                navElasticController.onRelease();
+                            }
+                            int itemsW = layoutNavItems.getWidth();
+                            if (!navDragging && ev.getActionMasked() == MotionEvent.ACTION_UP && itemsW > 0) {
+                                float localX = Math.max(0f, Math.min(itemsW - 1f, ev.getX() - layoutNavItems.getLeft()));
+                                int tappedTab = Math.max(0, Math.min(2, (int) (localX / Math.max(1f, itemsW / 3f))));
+                                if (tappedTab != activeTab) {
+                                    ColorOsLivingFlowEngine.performHaptic(
+                                            layoutBottomNav, ColorOsLivingFlowEngine.HapticKind.TICK);
+                                }
+                                switchTab(tappedTab, true, false);
+                            }
+                            navDragging = false;
+                            return true;
+                        }
+                    }
                     return false;
                 }
                 switch (ev.getActionMasked()) {
@@ -3345,15 +4542,43 @@ public class MainActivity extends Activity {
         });
     }
 
+    private static int getLivingFlowNavIconRes(int index, boolean selected) {
+        if (index == TAB_LOCKSCREEN) {
+            return selected ? R.drawable.ic_lf_nav_lockscreen_filled : R.drawable.ic_lf_nav_lockscreen_outline;
+        } else if (index == TAB_APPEARANCE) {
+            return selected ? R.drawable.ic_lf_nav_appearance_filled : R.drawable.ic_lf_nav_appearance_outline;
+        }
+        return selected ? R.drawable.ic_lf_nav_about_filled : R.drawable.ic_lf_nav_about_outline;
+    }
+
     private void updateNavIndicator(final int oldTab, final int targetTab, final int dir,
                                     final boolean animate, final boolean fromNavDrag) {
-        int accent = DynamicThemeHelper.getAccent(this);
-        int secondary = ConfigStore.resolveThemeColor(this, R.attr.couiTextSecondary, R.color.coui_text_secondary);
+        int activeColor = livingFlowUi
+                ? getColor(R.color.lf_nav_active)
+                : DynamicThemeHelper.getAccent(this);
+        int secondary = livingFlowUi
+                ? getColor(R.color.lf_nav_inactive)
+                : ConfigStore.resolveThemeColor(this, R.attr.couiTextSecondary, R.color.coui_text_secondary);
 
         for (int i = 0; i < 3; i++) {
             boolean selected = (i == targetTab);
-            navIcons[i].setColorFilter(selected ? accent : secondary);
-            navLabels[i].setTextColor(selected ? accent : secondary);
+            if (livingFlowUi) {
+                navIcons[i].setImageResource(getLivingFlowNavIconRes(i, selected));
+                navIcons[i].setColorFilter(selected ? activeColor : secondary);
+                navLabels[i].setTextColor(selected ? activeColor : secondary);
+                navLabels[i].setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
+                navIcons[i].animate().cancel();
+                navLabels[i].animate().cancel();
+                navIcons[i].setTranslationX(0f);
+                navIcons[i].setTranslationY(0f);
+                navIcons[i].setScaleX(1.0f);
+                navIcons[i].setScaleY(1.0f);
+                navLabels[i].setTranslationX(0f);
+                navLabels[i].setAlpha(1.0f);
+                continue;
+            }
+            navIcons[i].setColorFilter(selected ? activeColor : secondary);
+            navLabels[i].setTextColor(selected ? activeColor : secondary);
             navLabels[i].setTypeface(null, selected ? Typeface.BOLD : Typeface.NORMAL);
 
             navIcons[i].animate().cancel();
@@ -3407,7 +4632,7 @@ public class MainActivity extends Activity {
             }
         }
 
-        if (fromNavDrag || vNavSlidingPill == null || navTabs[targetTab] == null) {
+        if (livingFlowUi || fromNavDrag || vNavSlidingPill == null || navTabs[targetTab] == null) {
             return;
         }
         if (navTabs[targetTab].getWidth() == 0 || vNavSlidingPill.getWidth() == 0) {
@@ -3627,15 +4852,19 @@ public class MainActivity extends Activity {
                 sbFcMaskGradStrength.setProgress(data.fcMaskGradStrength);
             }
 
-            boolean followStock = (data.fcColor == 0);
-            swFcFollowStock.setChecked(followStock);
-
-            int swatchColor = followStock ? data.fcLastColor : data.fcColor;
-            updateSwatchView(vFcSwatch, swatchColor, !followStock && data.fcEnabled);
-            String tintLabel = followStock
-                    ? getString(R.string.label_stock_tint)
-                    : String.format("#%06X", swatchColor & 0x00FFFFFF);
-            tvFcColorHex.setText(tintLabel);
+            boolean customColorOn = (data.fcColor != 0);
+            if (!customColorOn) {
+                fcColorPickerUserExpanded = false;
+            }
+            swFcCustomColor.setChecked(customColorOn);
+            if (fcColorPicker != null) {
+                int pickerColor = customColorOn
+                        ? data.fcColor
+                        : (data.fcLastColor != 0 ? data.fcLastColor : ConfigStore.DEF_CUSTOM_COLOR);
+                fcColorPicker.setColor(pickerColor);
+            }
+            updateFcTintHeaderUi(false);
+            setFcColorPickerExpanded(customColorOn && fcColorPickerUserExpanded, fcColorPickerStateSynced);
 
             if (tvSummaryOpacityBlur != null) {
                 tvSummaryOpacityBlur.setText(getString(
@@ -3653,64 +4882,372 @@ public class MainActivity extends Activity {
                         data.fcSingleGlow,
                         data.fcSingleGlowChroma));
             }
-            if (tvSummaryTint != null) {
-                tvSummaryTint.setText(tintLabel);
-            }
-
             layoutFcSub.setAlpha(data.fcEnabled ? 1.0f : 0.45f);
             setEnabledRecursive(layoutFcSub, data.fcEnabled);
+            if (layoutFcTintCard != null) {
+                layoutFcTintCard.setAlpha(data.fcEnabled ? 1.0f : 0.45f);
+                setEnabledRecursive(layoutFcTintCard, data.fcEnabled);
+            }
+            for (View panel : fcMenuPanels) {
+                if (panel instanceof ViewGroup) {
+                    setEnabledRecursive((ViewGroup) panel, data.fcEnabled);
+                }
+            }
+            if (!data.fcEnabled && isFcSubpageOpen()) {
+                closeFcSubpage(false);
+            }
 
             boolean maskToneActive = data.fcEnabled && (data.fcMaskFollowMedia || data.fcNonMediaMaskEnabled);
             layoutFcMaskToneSub.setAlpha(maskToneActive ? 1.0f : 0.45f);
             setEnabledRecursive(layoutFcMaskToneSub, maskToneActive);
 
-            boolean colorRowActive = data.fcEnabled && !followStock;
-            rowFcColor.setAlpha(colorRowActive ? 1.0f : 0.45f);
-            rowFcColor.setEnabled(colorRowActive);
-            rowFcColor.setClickable(colorRowActive);
-
-            fcPreview.updateParams(
-                    data.fcEnabled,
-                    data.fcOpacity,
-                    data.fcIslandOpacity,
-                    data.fcBlur,
-                    data.fcBottomGlow,
-                    data.fcBottomGlowChroma,
-                    data.fcSingleGlow,
-                    data.fcSingleGlowChroma,
-                    data.fcColor,
-                    data.fcRemoveIslandMask,
-                    data.fcMatchCard,
-                    data.fcMaskFollowMedia,
-                    data.fcMaskBrightness,
-                    data.fcMaskChroma,
-                    data.fcMaskStrength,
-                    data.fcNonMediaMaskEnabled,
-                    data.fcNonMediaMaskColor,
-                    data.fcNonMediaMaskOpacity,
-                    data.fcNonMediaFollowMaskOpacity,
-                    data.fcMaskGradStart,
-                    data.fcMaskGradEnd,
-                    data.fcMaskGradMid,
-                    data.fcMaskGradStrength
-            );
+            syncPreviewView(fcPreview);
+            syncPreviewView(fcSubpagePreview);
         } finally {
             suppressUiCallbacks = false;
         }
     }
 
+    private void updateFcTintHeaderUi(boolean animateChevron) {
+        boolean customColorOn = (data.fcColor != 0);
+        boolean expanded = customColorOn && fcColorPickerUserExpanded;
+        if (tvFcCustomColorSummary != null) {
+            if (customColorOn) {
+                String hex = String.format(Locale.US, "#%06X", data.fcColor & 0x00FFFFFF);
+                tvFcCustomColorSummary.setText(hex + " · " + getString(R.string.pref_fc_custom_color_tap_expand));
+            } else {
+                tvFcCustomColorSummary.setText(R.string.pref_fc_custom_color_summary);
+            }
+        }
+        if (layoutFcTintBadge != null) {
+            layoutFcTintBadge.setVisibility(customColorOn ? View.VISIBLE : View.GONE);
+        }
+        if (vFcTintSwatchDot != null && customColorOn) {
+            GradientDrawable dot = new GradientDrawable();
+            dot.setShape(GradientDrawable.OVAL);
+            dot.setColor(0xFF000000 | (data.fcColor & 0x00FFFFFF));
+            boolean dark = ConfigStore.isDarkThemeActive(this);
+            dot.setStroke(Math.max(1, dp(1)), dark ? 0x38FFFFFF : 0x24000000);
+            vFcTintSwatchDot.setBackground(dot);
+        }
+        if (ivFcTintChevron != null) {
+            float targetRot = expanded ? 270f : 90f;
+            ivFcTintChevron.animate().cancel();
+            if (animateChevron) {
+                ivFcTintChevron.animate()
+                        .rotation(targetRot)
+                        .setDuration(220L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+            } else {
+                ivFcTintChevron.setRotation(targetRot);
+            }
+        }
+    }
+
+    private void snapFcColorPickerVisibility(boolean expand) {
+        if (layoutFcColorPickerWrap == null) {
+            return;
+        }
+        ViewGroup.LayoutParams lp = layoutFcColorPickerWrap.getLayoutParams();
+        if (lp != null && lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            layoutFcColorPickerWrap.setLayoutParams(lp);
+        }
+        layoutFcColorPickerWrap.setAlpha(1f);
+        layoutFcColorPickerWrap.setTranslationY(0f);
+        layoutFcColorPickerWrap.setVisibility(expand ? View.VISIBLE : View.GONE);
+        if (layoutFcColorPickerWrap instanceof ViewGroup) {
+            ((ViewGroup) layoutFcColorPickerWrap).setClipChildren(false);
+            ((ViewGroup) layoutFcColorPickerWrap).setClipToPadding(false);
+        }
+        if (dividerFcTintPicker != null) {
+            dividerFcTintPicker.setAlpha(1f);
+            dividerFcTintPicker.setVisibility(expand ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void setFcColorPickerExpanded(final boolean expand, boolean animate) {
+        if (layoutFcColorPickerWrap == null) {
+            return;
+        }
+        final boolean curVisible = layoutFcColorPickerWrap.getVisibility() == View.VISIBLE;
+        if (fcColorPickerStateSynced && fcColorPickerExpanded == expand
+                && fcColorPickerAnimator == null && curVisible == expand) {
+            return;
+        }
+        fcColorPickerStateSynced = true;
+        fcColorPickerExpanded = expand;
+        if (fcColorPickerAnimator != null) {
+            fcColorPickerAnimator.cancel();
+            fcColorPickerAnimator = null;
+        }
+        if (dividerFcTintPicker != null) {
+            dividerFcTintPicker.animate().cancel();
+        }
+        final ViewGroup wrapGroup = layoutFcColorPickerWrap instanceof ViewGroup
+                ? (ViewGroup) layoutFcColorPickerWrap : null;
+
+        if (!animate) {
+            snapFcColorPickerVisibility(expand);
+            return;
+        }
+
+        if (expand) {
+            final int startH = curVisible ? Math.max(0, layoutFcColorPickerWrap.getHeight()) : 0;
+            final float startAlpha = curVisible ? layoutFcColorPickerWrap.getAlpha() : 0f;
+            final float startTransY = curVisible ? layoutFcColorPickerWrap.getTranslationY() : -dp(10);
+
+            int availW = (layoutFcTintCard != null && layoutFcTintCard.getWidth() > 0)
+                    ? layoutFcTintCard.getWidth()
+                    : (getResources().getDisplayMetrics().widthPixels - dp(32));
+            layoutFcColorPickerWrap.measure(
+                    View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            final int targetH = Math.max(1, layoutFcColorPickerWrap.getMeasuredHeight());
+
+            if (wrapGroup != null) {
+                wrapGroup.setClipChildren(true);
+                wrapGroup.setClipToPadding(true);
+            }
+            if (dividerFcTintPicker != null) {
+                if (dividerFcTintPicker.getVisibility() != View.VISIBLE) {
+                    dividerFcTintPicker.setAlpha(0f);
+                    dividerFcTintPicker.setVisibility(View.VISIBLE);
+                }
+                dividerFcTintPicker.animate()
+                        .alpha(1f)
+                        .setDuration(220L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+            }
+
+            ViewGroup.LayoutParams lp = layoutFcColorPickerWrap.getLayoutParams();
+            if (lp != null) {
+                lp.height = startH;
+                layoutFcColorPickerWrap.setLayoutParams(lp);
+            }
+            layoutFcColorPickerWrap.setAlpha(startAlpha);
+            layoutFcColorPickerWrap.setTranslationY(startTransY);
+            layoutFcColorPickerWrap.setVisibility(View.VISIBLE);
+
+            final ValueAnimator anim = ValueAnimator.ofInt(startH, targetH);
+            fcColorPickerAnimator = anim;
+            anim.setDuration(340L);
+            anim.setInterpolator(FLUID_EASE);
+            anim.addUpdateListener(animation -> {
+                ViewGroup.LayoutParams curLp = layoutFcColorPickerWrap.getLayoutParams();
+                if (curLp != null) {
+                    curLp.height = (Integer) animation.getAnimatedValue();
+                    layoutFcColorPickerWrap.requestLayout();
+                }
+                float frac = animation.getAnimatedFraction();
+                float alphaFrac = Math.min(1f, frac * 1.35f);
+                layoutFcColorPickerWrap.setAlpha(startAlpha + (1f - startAlpha) * alphaFrac);
+                layoutFcColorPickerWrap.setTranslationY(startTransY * (1f - frac));
+                if (vTopHeaderBlur != null) {
+                    vTopHeaderBlur.notifyTargetInvalidated();
+                }
+                if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+            });
+            anim.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (fcColorPickerAnimator == anim) {
+                        fcColorPickerAnimator = null;
+                    }
+                    if (!cancelled && fcColorPickerExpanded) {
+                        snapFcColorPickerVisibility(true);
+                    }
+                }
+            });
+            anim.start();
+        } else {
+            final int startH = curVisible ? Math.max(0, layoutFcColorPickerWrap.getHeight()) : 0;
+            if (startH <= 0) {
+                snapFcColorPickerVisibility(false);
+                return;
+            }
+            final float startAlpha = layoutFcColorPickerWrap.getAlpha();
+            final float startTransY = layoutFcColorPickerWrap.getTranslationY();
+            final float endTransY = -dp(8);
+
+            if (wrapGroup != null) {
+                wrapGroup.setClipChildren(true);
+                wrapGroup.setClipToPadding(true);
+            }
+            if (dividerFcTintPicker != null && dividerFcTintPicker.getVisibility() == View.VISIBLE) {
+                dividerFcTintPicker.animate()
+                        .alpha(0f)
+                        .setDuration(200L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+            }
+
+            final ValueAnimator anim = ValueAnimator.ofInt(startH, 0);
+            fcColorPickerAnimator = anim;
+            anim.setDuration(280L);
+            anim.setInterpolator(FLUID_EASE);
+            anim.addUpdateListener(animation -> {
+                ViewGroup.LayoutParams curLp = layoutFcColorPickerWrap.getLayoutParams();
+                if (curLp != null) {
+                    curLp.height = (Integer) animation.getAnimatedValue();
+                    layoutFcColorPickerWrap.requestLayout();
+                }
+                float frac = animation.getAnimatedFraction();
+                float alphaKeep = Math.max(0f, 1f - frac * 1.45f);
+                layoutFcColorPickerWrap.setAlpha(startAlpha * alphaKeep);
+                layoutFcColorPickerWrap.setTranslationY(startTransY + (endTransY - startTransY) * frac);
+                if (vTopHeaderBlur != null) {
+                    vTopHeaderBlur.notifyTargetInvalidated();
+                }
+                if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+            });
+            anim.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (fcColorPickerAnimator == anim) {
+                        fcColorPickerAnimator = null;
+                    }
+                    if (!cancelled && !fcColorPickerExpanded) {
+                        snapFcColorPickerVisibility(false);
+                    }
+                }
+            });
+            anim.start();
+        }
+    }
+
+    private void syncPreviewView(FluidCloudPreviewView preview) {
+        if (preview == null) {
+            return;
+        }
+        preview.updateParams(
+                data.fcEnabled,
+                data.fcOpacity,
+                data.fcIslandOpacity,
+                data.fcBlur,
+                data.fcBottomGlow,
+                data.fcBottomGlowChroma,
+                data.fcSingleGlow,
+                data.fcSingleGlowChroma,
+                data.fcColor,
+                data.fcRemoveIslandMask,
+                data.fcMatchCard,
+                data.fcMaskFollowMedia,
+                data.fcMaskBrightness,
+                data.fcMaskChroma,
+                data.fcMaskStrength,
+                data.fcNonMediaMaskEnabled,
+                data.fcNonMediaMaskColor,
+                data.fcNonMediaMaskOpacity,
+                data.fcNonMediaFollowMaskOpacity,
+                data.fcMaskGradStart,
+                data.fcMaskGradEnd,
+                data.fcMaskGradMid,
+                data.fcMaskGradStrength
+        );
+    }
+
     private void syncStatusAndAboutUi() {
         if (xspActive) {
-            ivStatusIcon.setImageResource(R.drawable.ic_status_active);
-            tvStatusTitle.setText(R.string.status_title_active);
-            tvStatusSubtitle.setText(R.string.status_sub_active);
-            tvAboutChannel.setText(R.string.channel_xsp);
+            if (ivStatusIcon != null) {
+                ivStatusIcon.setImageResource(R.drawable.ic_status_active);
+            }
+            if (tvStatusTitle != null) {
+                tvStatusTitle.setText(R.string.status_title_active);
+            }
+            if (tvStatusSubtitle != null) {
+                tvStatusSubtitle.setText(R.string.status_sub_active);
+            }
+            if (tvAboutChannel != null) {
+                tvAboutChannel.setText(R.string.channel_xsp);
+            }
         } else {
-            ivStatusIcon.setImageResource(R.drawable.ic_status_warn);
-            tvStatusTitle.setText(R.string.status_title_inactive);
-            tvStatusSubtitle.setText(R.string.status_sub_inactive);
-            tvAboutChannel.setText(R.string.channel_private_warn);
+            if (ivStatusIcon != null) {
+                ivStatusIcon.setImageResource(R.drawable.ic_status_warn);
+            }
+            if (tvStatusTitle != null) {
+                tvStatusTitle.setText(R.string.status_title_inactive);
+            }
+            if (tvStatusSubtitle != null) {
+                tvStatusSubtitle.setText(R.string.status_sub_inactive);
+            }
+            if (tvAboutChannel != null) {
+                tvAboutChannel.setText(R.string.channel_private_warn);
+            }
         }
+        if (livingFlowUi) {
+            boolean dark = ConfigStore.isDarkThemeActive(this);
+            int accent = DynamicThemeHelper.getAccent(this);
+            int statusColor = xspActive ? accent : getColor(R.color.coui_status_warn_fg);
+            int emblemFill = xspActive
+                    ? (((dark ? 0x26 : 0x16) << 24) | (accent & 0x00FFFFFF))
+                    : (dark ? 0x28FBBF24 : 0x1AD97706);
+
+            if (vLockStatusEmblem != null) {
+                GradientDrawable emblemBg = new GradientDrawable();
+                emblemBg.setShape(GradientDrawable.OVAL);
+                emblemBg.setColor(emblemFill);
+                vLockStatusEmblem.setBackground(emblemBg);
+                if (ivStatusIcon != null) {
+                    ivStatusIcon.setColorFilter(statusColor);
+                }
+            }
+            if (tvLockStatusBadge != null) {
+                tvLockStatusBadge.setTextColor(statusColor);
+                GradientDrawable badgeBg = new GradientDrawable();
+                badgeBg.setShape(GradientDrawable.RECTANGLE);
+                badgeBg.setCornerRadius(999f * getResources().getDisplayMetrics().density);
+                badgeBg.setColor(emblemFill);
+                tvLockStatusBadge.setBackground(badgeBg);
+            }
+            if (cardAboutModuleStatus != null) {
+                if (vAboutStatusEmblem != null) {
+                    GradientDrawable emblemBg = new GradientDrawable();
+                    emblemBg.setShape(GradientDrawable.OVAL);
+                    emblemBg.setColor(emblemFill);
+                    vAboutStatusEmblem.setBackground(emblemBg);
+                }
+                if (ivAboutStatusIcon != null) {
+                    ivAboutStatusIcon.setImageResource(xspActive ? R.drawable.ic_status_active : R.drawable.ic_status_warn);
+                    ivAboutStatusIcon.setColorFilter(statusColor);
+                }
+                if (tvAboutStatusTitle != null) {
+                    tvAboutStatusTitle.setText(xspActive ? R.string.status_title_active : R.string.status_title_inactive);
+                }
+                if (tvAboutStatusBadge != null) {
+                    tvAboutStatusBadge.setTextColor(statusColor);
+                    GradientDrawable badgeBg = new GradientDrawable();
+                    badgeBg.setShape(GradientDrawable.RECTANGLE);
+                    badgeBg.setCornerRadius(999f * getResources().getDisplayMetrics().density);
+                    badgeBg.setColor(emblemFill);
+                    tvAboutStatusBadge.setBackground(badgeBg);
+                }
+                if (tvAboutStatusSubtitle != null) {
+                    tvAboutStatusSubtitle.setText(xspActive ? R.string.status_sub_active : R.string.status_sub_inactive);
+                }
+            }
+        }
+        updateUiStyleLabel();
         updateLanguageLabel();
         updateDarkModeLabel();
         if (swAboutMonet != null) {
@@ -3739,14 +5276,6 @@ public class MainActivity extends Activity {
         if (rowAboutDebugTester != null) {
             rowAboutDebugTester.setVisibility(testerVis);
         }
-    }
-
-    private void updateSwatchView(View v, int argb, boolean active) {
-        GradientDrawable gd = new GradientDrawable();
-        gd.setShape(GradientDrawable.OVAL);
-        gd.setColor(active ? argb : (0x66000000 | (argb & 0x00FFFFFF)));
-        gd.setStroke(dp(1), ConfigStore.resolveThemeColor(this, R.attr.couiDivider, R.color.coui_divider));
-        v.setBackground(gd);
     }
 
     private static void setEnabledRecursive(ViewGroup vg, boolean enabled) {

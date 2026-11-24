@@ -38,16 +38,26 @@ public class ProgressiveBlurFrameLayout extends FrameLayout {
         }
     }
 
+    public void bindProgressiveBlur(View target, TopGradientBlurView overlay) {
+        this.blurTargetId = View.NO_ID;
+        this.blurOverlayId = View.NO_ID;
+        this.cachedTarget = target;
+        this.cachedOverlay = overlay;
+        if (overlay != null && target != null) {
+            overlay.setBlurTargetView(target);
+        }
+    }
+
     @Override
     public void onDescendantInvalidated(View child, View target) {
         super.onDescendantInvalidated(child, target);
-        if (blurTargetId == View.NO_ID || blurOverlayId == View.NO_ID) {
+        if (cachedTarget == null && blurTargetId == View.NO_ID) {
             return;
         }
-        if (cachedTarget == null) {
+        if (cachedTarget == null && blurTargetId != View.NO_ID) {
             cachedTarget = findViewById(blurTargetId);
         }
-        if (cachedOverlay == null) {
+        if (cachedOverlay == null && blurOverlayId != View.NO_ID) {
             View overlay = findViewById(blurOverlayId);
             cachedOverlay = overlay instanceof TopGradientBlurView ? (TopGradientBlurView) overlay : null;
         }

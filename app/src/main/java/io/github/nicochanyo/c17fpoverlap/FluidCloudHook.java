@@ -9,6 +9,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.RuntimeShader;
@@ -326,7 +327,10 @@ public final class FluidCloudHook {
         int midPct;
         int width;
         int height;
+        float cornerMode;
         float cornerRadius;
+        float cornerWeight;
+        Path smoothPath;
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         LinearGradient shader;
     }
@@ -3108,14 +3112,34 @@ public final class FluidCloudHook {
             cache = new CachedMaskDraw();
             CUSTOM_ROW_MASK_CACHE.put(rowView, cache);
         }
-        if (cache.cornerRadius <= 0f || cache.width != w || cache.height != h) {
-            float dp = resolveDisplayDensity();
-            cache.cornerRadius = extractCustomRowCornerConfig(blurDr, proxy, w, h, dp)[1];
-        }
+        float[] cc = extractCustomRowCornerConfig(blurDr, proxy, w, h, resolveDisplayDensity());
+        float cornerMode = cc[0];
+        float cornerRadius = cc[1];
+        float cornerWeight = cc[2];
         float tx = readRowTranslationX(rowView);
-        if (isCollapsedByHorizontalSwipe(bgView, Math.abs(tx), cache.cornerRadius)) {
+        if (isCollapsedByHorizontalSwipe(bgView, Math.abs(tx), cornerRadius)) {
             return;
         }
+        boolean useG2 = cornerMode > 1.5f && cornerRadius > 0.0f;
+        boolean geomChanged = cache.width != w || cache.height != h
+                || cache.cornerMode != cornerMode
+                || cache.cornerRadius != cornerRadius
+                || cache.cornerWeight != cornerWeight;
+        if (useG2) {
+            if (cache.smoothPath == null || geomChanged) {
+                if (cache.smoothPath == null) {
+                    cache.smoothPath = new Path();
+                }
+                DynamicIslandHook.buildSmoothRoundRectPath(
+                        cache.smoothPath, 0f, 0f, (float) w, (float) h,
+                        cornerRadius, cornerWeight, true);
+            }
+        } else {
+            cache.smoothPath = null;
+        }
+        cache.cornerMode = cornerMode;
+        cache.cornerRadius = cornerRadius;
+        cache.cornerWeight = cornerWeight;
         if (cache.shader == null
                 || cache.height != h
                 || cache.rgb != spec.rgb
@@ -3139,8 +3163,11 @@ public final class FluidCloudHook {
         int sc = canvas.save();
         try {
             canvas.translate(bounds.left + (int) tx, bounds.top);
-            float r = cache.cornerRadius;
-            canvas.drawRoundRect(0f, 0f, (float) w, (float) h, r, r, cache.paint);
+            if (useG2 && cache.smoothPath != null && !cache.smoothPath.isEmpty()) {
+                canvas.drawPath(cache.smoothPath, cache.paint);
+            } else {
+                canvas.drawRoundRect(0f, 0f, (float) w, (float) h, cornerRadius, cornerRadius, cache.paint);
+            }
         } finally {
             canvas.restoreToCount(sc);
         }
@@ -4858,7 +4885,7 @@ public final class FluidCloudHook {
 
             int sc = canvas.save();
             try {
-                canvas.translate(bounds.left, bounds.top);
+                canvas.translate(bounds.left + (int) tx, bounds.top);
                 canvas.drawRect(0f, 0f, (float) w, (float) h, paint);
             } finally {
                 canvas.restoreToCount(sc);

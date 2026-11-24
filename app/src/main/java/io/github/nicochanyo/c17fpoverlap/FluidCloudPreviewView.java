@@ -65,6 +65,23 @@ public class FluidCloudPreviewView extends View {
         super(context, attrs, defStyleAttr);
     }
 
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int defaultH = Math.round(148f * getResources().getDisplayMetrics().density);
+        int w = resolveSize(getSuggestedMinimumWidth(), widthMeasureSpec);
+        int hMode = MeasureSpec.getMode(heightMeasureSpec);
+        int hSize = MeasureSpec.getSize(heightMeasureSpec);
+        int h;
+        if (hMode == MeasureSpec.EXACTLY) {
+            h = hSize;
+        } else if (hMode == MeasureSpec.AT_MOST) {
+            h = Math.min(defaultH, hSize);
+        } else {
+            h = defaultH;
+        }
+        setMeasuredDimension(w, Math.max(1, h));
+    }
+
     public void updateParams(boolean enabled, int lockOpacity, int islandOpacity,
                              int blur, int bottomGlow, int bottomGlowChroma,
                              int singleGlow, int singleGlowChroma, int color,

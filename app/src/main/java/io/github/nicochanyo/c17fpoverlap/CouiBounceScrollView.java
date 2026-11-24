@@ -53,6 +53,9 @@ public class CouiBounceScrollView extends ScrollView {
     private boolean flingRunning;
     private int lastFlingY;
 
+    private boolean disallowParentOnDown;
+    private boolean overscrollHapticArmed = true;
+
     private final Runnable springFrameRunnable = this::stepSpringFrame;
     private final Runnable flingFrameRunnable = this::stepFlingFrame;
 
@@ -76,6 +79,39 @@ public class CouiBounceScrollView extends ScrollView {
 
     public void setOnOverscrollListener(OnOverscrollListener listener) {
         this.overscrollListener = listener;
+    }
+
+    public void setDisallowParentOnDown(boolean disallow) {
+        this.disallowParentOnDown = disallow;
+    }
+
+    private void requestDisallowAllParents(boolean disallow) {
+        ViewParent p = getParent();
+        while (p != null) {
+            p.requestDisallowInterceptTouchEvent(disallow);
+            p = p.getParent();
+        }
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev != null && ev.getActionMasked() == MotionEvent.ACTION_DOWN && disallowParentOnDown) {
+            requestDisallowAllParents(true);
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    /**
+     * Resets scroll position and active overscroll bounce state when reopening a subpage.
+     */
+    public void resetScrollAndBounce() {
+        stopAnimations();
+        isDragging = false;
+        overscrollHapticArmed = true;
+        activePointerId = MotionEvent.INVALID_POINTER_ID;
+        overscrollRawY = 0f;
+        setOverscrollVisualY(0f);
+        scrollTo(0, 0);
     }
 
     @Override
@@ -199,10 +235,7 @@ public class CouiBounceScrollView extends ScrollView {
                     if (dy > touchSlop && dy > dx * 1.05f) {
                         isDragging = true;
                         lastY = y;
-                        ViewParent parent = getParent();
-                        if (parent != null) {
-                            parent.requestDisallowInterceptTouchEvent(true);
-                        }
+                        requestDisallowAllParents(true);
                     }
                     return true;
                 }
@@ -438,6 +471,15 @@ public class CouiBounceScrollView extends ScrollView {
 
     private void setOverscrollVisualY(float visualY) {
         overscrollVisualY = visualY;
+        if (Math.abs(visualY) <= 0.5f) {
+            overscrollHapticArmed = true;
+        } else if (isDragging && overscrollHapticArmed
+                && Math.abs(visualY) >= 6f * getResources().getDisplayMetrics().density) {
+            overscrollHapticArmed = false;
+            if (ConfigStore.isLivingFlowUi(getContext())) {
+                ColorOsLivingFlowEngine.performHaptic(this, ColorOsLivingFlowEngine.HapticKind.TICK);
+            }
+        }
         View child = getChildCount() > 0 ? getChildAt(0) : null;
         if (child != null) {
             child.setTranslationY(visualY);

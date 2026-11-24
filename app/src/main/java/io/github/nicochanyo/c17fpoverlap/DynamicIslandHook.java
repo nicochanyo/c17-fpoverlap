@@ -219,6 +219,56 @@ public final class DynamicIslandHook {
         }
     };
 
+    private static final LinearGradient TRANSPARENT_SHADER = new LinearGradient(
+            0f, 0f, 0f, 1f, 0, 0, Shader.TileMode.CLAMP);
+    private static final WeakIdentityMap<Drawable, Object> LAST_PATH_TRIPLE = new WeakIdentityMap<>();
+    private static volatile Field sSmoothPathRectField;
+    private static volatile boolean sOplusPathAdapterProbed;
+    private static volatile Constructor<?> sOplusPathAdapterCtor;
+    private static volatile Method sAddSmoothRoundRectM;
+
+    static boolean buildSmoothRoundRectPath(Path dest, float left, float top, float right, float bottom,
+                                            float radius, float weight, boolean useG2) {
+        if (dest == null) {
+            return false;
+        }
+        dest.rewind();
+        if (right <= left || bottom <= top) {
+            return false;
+        }
+        if (useG2 && radius > 0.0f) {
+            try {
+                if (!sOplusPathAdapterProbed) {
+                    sOplusPathAdapterProbed = true;
+                    Class<?> cls = Class.forName("com.oplus.graphics.OplusPathAdapter");
+                    Constructor<?> ctor = cls.getConstructor(Path.class, int.class);
+                    Method m = cls.getMethod("addSmoothRoundRect",
+                            float.class, float.class, float.class, float.class,
+                            float.class, float.class, float.class, Path.Direction.class);
+                    sOplusPathAdapterCtor = ctor;
+                    sAddSmoothRoundRectM = m;
+                }
+                Constructor<?> ctor = sOplusPathAdapterCtor;
+                Method m = sAddSmoothRoundRectM;
+                if (ctor != null && m != null) {
+                    Object adapter = ctor.newInstance(dest, 1);
+                    float effWeight = weight > 0.0f ? weight : 3.0f;
+                    m.invoke(adapter, left, top, right, bottom,
+                            radius, radius, effWeight, Path.Direction.CCW);
+                    if (!dest.isEmpty()) {
+                        return true;
+                    }
+                    dest.rewind();
+                }
+            } catch (Throwable ignored) {
+                dest.rewind();
+            }
+        }
+        float r = Math.max(0.0f, radius);
+        dest.addRoundRect(new RectF(left, top, right, bottom), r, r, Path.Direction.CW);
+        return false;
+    }
+
     // ColorOS 17 Y-UP AGSL SDF (G2 smoothSDF_D + RBox fallback) bottom inner glow + bottom-arc specular rim for Expanded Dynamic Island
     private static final String ISLAND_BOTTOM_GLOW_AGSL =
             "uniform float2 uSize;\n" +
@@ -2249,9 +2299,13 @@ public final class DynamicIslandHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         if (param.thisObject instanceof Drawable) {
-                            LAST_GRAD_HASH.remove(param.thisObject);
-                            LAST_GRAD_FAST_KEY.remove(param.thisObject);
-                            patchGradientDrawable((Drawable) param.thisObject, cfg);
+                            Drawable d = (Drawable) param.thisObject;
+                            if (!cfg.isFcEnabled() && ORIG_GRAD_STOPS.get(d) == null) {
+                                return;
+                            }
+                            LAST_GRAD_HASH.remove(d);
+                            LAST_GRAD_FAST_KEY.remove(d);
+                            patchGradientDrawable(d, cfg);
                         }
                     }
                 });
@@ -2758,6 +2812,17 @@ public final class DynamicIslandHook {
             }
 
             if (!cfg.isFcEnabled()) {
+                Object curShader = ref.shaderField.get(drawable);
+                boolean alreadyRestored = ref.colorFields[0].getInt(drawable) == origStops[0]
+                        && ref.colorFields[1].getInt(drawable) == origStops[1]
+                        && ref.colorFields[2].getInt(drawable) == origStops[2]
+                        && curShader != TRANSPARENT_SHADER
+                        && curShader != null;
+                if (alreadyRestored) {
+                    LAST_GRAD_HASH.put(drawable, hash);
+                    LAST_GRAD_FAST_KEY.put(drawable, fastKey);
+                    return false;
+                }
                 for (int i = 0; i < 3; i++) {
                     ref.colorFields[i].setInt(drawable, origStops[i]);
                 }
@@ -2784,18 +2849,21 @@ public final class DynamicIslandHook {
                 for (int i = 0; i < 3; i++) {
                     ref.colorFields[i].setInt(drawable, 0);
                 }
-                ref.shaderField.set(drawable, null);
+                Shader activeShader = (bw > 0 && bh > 0) ? TRANSPARENT_SHADER : null;
+                int activeW = (bw > 0 && bh > 0) ? bw : -1;
+                int activeH = (bw > 0 && bh > 0) ? bh : -1;
+                ref.shaderField.set(drawable, activeShader);
                 if (ref.paintField != null) {
                     Object pObj = ref.paintField.get(drawable);
                     if (pObj instanceof Paint) {
-                        ((Paint) pObj).setShader(null);
+                        ((Paint) pObj).setShader(activeShader);
                     }
                 }
                 if (ref.widthField != null) {
-                    ref.widthField.setInt(drawable, -1);
+                    ref.widthField.setInt(drawable, activeW);
                 }
                 if (ref.heightField != null) {
-                    ref.heightField.setInt(drawable, -1);
+                    ref.heightField.setInt(drawable, activeH);
                 }
                 drawable.setAlpha(255);
                 LAST_GRAD_HASH.put(drawable, hash);
@@ -3059,10 +3127,23 @@ public final class DynamicIslandHook {
         float cornerWeight = cornerCfg[2] > 0.0f ? cornerCfg[2] : 3.0f;
 
         Path clipPath = readSmoothPath(drawable);
-        boolean useFallbackClip = (clipPath == null || clipPath.isEmpty());
-        if (useFallbackClip) {
+        Rect pathRect = readSmoothPathRect(drawable);
+        Object curTriple = readObjectField(drawable, "e");
+        Object prevTriple = LAST_PATH_TRIPLE.get(drawable);
+        boolean tripleChanged = curTriple != null && prevTriple != null && !curTriple.equals(prevTriple);
+        if (tripleChanged && pathRect != null) {
+            pathRect.setEmpty();
+        }
+        boolean validClip = clipPath != null && !clipPath.isEmpty()
+                && (pathRect == null || pathRect.equals(bounds))
+                && !tripleChanged;
+        if (!validClip) {
             clipPath = new Path();
-            clipPath.addRoundRect(new RectF(bounds), cornerRadius, cornerRadius, Path.Direction.CW);
+            buildSmoothRoundRectPath(clipPath, bounds.left, bounds.top, bounds.right, bounds.bottom,
+                    cornerRadius, cornerWeight, smoothMode > 0.5f);
+        }
+        if (curTriple != null) {
+            LAST_PATH_TRIPLE.put(drawable, curTriple);
         }
 
         try {
@@ -3133,6 +3214,31 @@ public final class DynamicIslandHook {
         }
     }
 
+    private static Number readTripleNumber(Object triple, String obfMethod, String ktMethod, String fieldName) {
+        try {
+            Method m = findMethod(triple.getClass(), obfMethod);
+            if (m != null && m.getParameterTypes().length == 0) {
+                Object val = m.invoke(triple);
+                if (val instanceof Number) {
+                    return (Number) val;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Method m = findMethod(triple.getClass(), ktMethod);
+            if (m != null && m.getParameterTypes().length == 0) {
+                Object val = m.invoke(triple);
+                if (val instanceof Number) {
+                    return (Number) val;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        Object fv = readObjectField(triple, fieldName);
+        return fv instanceof Number ? (Number) fv : null;
+    }
+
     private static float[] extractCornerConfig(Drawable drawable, int w, int h) {
         float cornerType = 2.0f;
         float radius = Math.min(w, h) * 0.25f;
@@ -3143,34 +3249,25 @@ public final class DynamicIslandHook {
         try {
             Object triple = readObjectField(drawable, "e");
             if (triple != null) {
-                Method mD = findMethod(triple.getClass(), "d");
-                if (mD != null && mD.getParameterTypes().length == 0) {
-                    Object val = mD.invoke(triple);
-                    if (val instanceof Number) {
-                        cornerType = ((Number) val).floatValue();
-                        gotType = true;
+                Number nType = readTripleNumber(triple, "d", "getFirst", "first");
+                if (nType != null) {
+                    cornerType = nType.floatValue();
+                    gotType = true;
+                }
+                Number nRadius = readTripleNumber(triple, "e", "getSecond", "second");
+                if (nRadius != null) {
+                    float r = nRadius.floatValue();
+                    if (r > 0f) {
+                        radius = r;
+                        gotRadius = true;
                     }
                 }
-                Method mE = findMethod(triple.getClass(), "e");
-                if (mE != null && mE.getParameterTypes().length == 0) {
-                    Object val = mE.invoke(triple);
-                    if (val instanceof Number) {
-                        float r = ((Number) val).floatValue();
-                        if (r > 0f) {
-                            radius = r;
-                            gotRadius = true;
-                        }
-                    }
-                }
-                Method mF = findMethod(triple.getClass(), "f");
-                if (mF != null && mF.getParameterTypes().length == 0) {
-                    Object val = mF.invoke(triple);
-                    if (val instanceof Number) {
-                        float wt = ((Number) val).floatValue();
-                        if (wt > 0f) {
-                            weight = wt;
-                            gotWeight = true;
-                        }
+                Number nWeight = readTripleNumber(triple, "f", "getThird", "third");
+                if (nWeight != null) {
+                    float wt = nWeight.floatValue();
+                    if (wt > 0f) {
+                        weight = wt;
+                        gotWeight = true;
                     }
                 }
                 if (!gotRadius || !gotType || !gotWeight) {
@@ -3219,6 +3316,24 @@ public final class DynamicIslandHook {
             }
             Object val = f.get(drawable);
             return val instanceof Path ? (Path) val : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Rect readSmoothPathRect(Drawable drawable) {
+        try {
+            Field f = sSmoothPathRectField;
+            if (f == null) {
+                f = drawable.getClass().getDeclaredField("h");
+                if (!Rect.class.isAssignableFrom(f.getType())) {
+                    return null;
+                }
+                f.setAccessible(true);
+                sSmoothPathRectField = f;
+            }
+            Object val = f.get(drawable);
+            return val instanceof Rect ? (Rect) val : null;
         } catch (Throwable ignored) {
             return null;
         }
