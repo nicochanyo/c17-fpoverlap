@@ -19,7 +19,7 @@ import android.widget.ScrollView;
 public class CouiBounceScrollView extends ScrollView {
     private static final float RUBBER_DAMP_COEFF = 0.52f;
     private static final float MAX_STRETCH_RATIO = 0.42f;
-    private static final float SPRING_OMEGA = 15.0f; // rad/s (critically damped, ~420ms settle)
+    private static final float SPRING_OMEGA = 11.5f; // rad/s (critically damped, ~550ms settle)
     private static final float WALL_IMPACT_VEL_SCALE = 0.46f;
     private static final float SETTLE_THRESHOLD_PX = 0.4f;
 

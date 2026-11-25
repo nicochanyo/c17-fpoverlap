@@ -579,45 +579,47 @@ public final class ColorOsLivingFlowEngine {
             Object shadow = sShadowParamsCtor.newInstance(1, fadeScale, fadeIn, 1.0f);
             sSetShadowParams.invoke(null, view, shadow);
 
-            if (enableCaustic && sSetCausticParams != null) {
+            if (!enableCaustic) {
+                view.setElevation(0f);
+            } else if (sSetCausticParams != null) {
                 if (isPrimaryColored) {
                     int r = Color.red(accentColor);
                     int g = Color.green(accentColor);
                     int b = Color.blue(accentColor);
-                    view.setElevation(8f * d);
+                    view.setElevation(4f * d);
                     if (Build.VERSION.SDK_INT >= 28) {
-                        int shadowCol = Color.argb(30, r, g, b);
+                        int shadowCol = Color.argb(dark ? 44 : 36, r, g, b);
                         view.setOutlineAmbientShadowColor(shadowCol);
                         view.setOutlineSpotShadowColor(shadowCol);
                     }
                     if (sOplusViewCtor != null && sSetOverrideLightSource != null) {
                         Object ov = sOplusViewCtor.newInstance(view);
-                        sSetOverrideLightSource.invoke(ov, -1.0f, -600f * d, 0f, 600f * d, 0f);
+                        sSetOverrideLightSource.invoke(ov, -1.0f, -40f * d, 900f * d, 180f * d, 0f);
                     }
                     if (sSetCausticColor != null) {
-                        sSetCausticColor.invoke(null, view, Color.argb(153, r, g, b));
+                        sSetCausticColor.invoke(null, view, Color.argb(120, r, g, b));
                     }
                     if (sSetCausticLayout != null) {
                         sSetCausticLayout.invoke(null, view, 0, 0, 0, Math.round(4.9f * d));
                     }
-                    sSetCausticParams.invoke(null, view, 10.4f * d, 0.6f, 0.6f, 18.0f, 0.45f, 0.6f);
+                    sSetCausticParams.invoke(null, view, 6.5f * d, 0.55f, 0.55f, 16.0f, 0.45f, 0.55f);
                 } else if (!dark) {
-                    view.setElevation(12f * d);
+                    view.setElevation(2.5f * d);
                     if (Build.VERSION.SDK_INT >= 28) {
-                        view.setOutlineAmbientShadowColor(0x16000000);
-                        view.setOutlineSpotShadowColor(0x16000000);
+                        view.setOutlineAmbientShadowColor(0x10000000);
+                        view.setOutlineSpotShadowColor(0x18000000);
                     }
                     if (sOplusViewCtor != null && sSetOverrideLightSource != null) {
                         Object ov = sOplusViewCtor.newInstance(view);
-                        sSetOverrideLightSource.invoke(ov, -1.0f, -160f * d, 0f, 800f * d, 0f);
+                        sSetOverrideLightSource.invoke(ov, -1.0f, -32f * d, 900f * d, 140f * d, 0f);
                     }
                     if (sSetCausticColor != null) {
-                        sSetCausticColor.invoke(null, view, 0x2EFFFFFF);
+                        sSetCausticColor.invoke(null, view, 0x22FFFFFF);
                     }
                     if (sSetCausticLayout != null) {
                         sSetCausticLayout.invoke(null, view, 0, 0, 0, Math.round(4.9f * d));
                     }
-                    sSetCausticParams.invoke(null, view, 10.4f * d, 0.6f, 0.6f, 18.0f, 0.45f, 0.6f);
+                    sSetCausticParams.invoke(null, view, 6.0f * d, 0.55f, 0.55f, 16.0f, 0.45f, 0.55f);
                 }
             }
         } catch (Throwable ignored) {

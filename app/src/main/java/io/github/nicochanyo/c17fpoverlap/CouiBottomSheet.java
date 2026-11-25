@@ -49,10 +49,10 @@ import android.widget.TextView;
 public final class CouiBottomSheet {
     private static final int TAG_TOUCH_POINT = 0x53504354;
     private static final int TAG_TOUCH_FEEDBACK = 0x53504C54;
-    private static final PathInterpolator FLUID_EASE = new PathInterpolator(0.22f, 1.0f, 0.36f, 1.0f);
+    private static final PathInterpolator FLUID_EASE = new PathInterpolator(0.22f, 0.88f, 0.25f, 1.0f);
     private static final PathInterpolator POPUP_OPEN_EASE = new PathInterpolator(0.20f, 1.06f, 0.30f, 1.0f);
     private static final PathInterpolator POPUP_CLOSE_EASE = new PathInterpolator(0.40f, 0f, 0.65f, 1f);
-    private static final PathInterpolator SHEET_OPEN_EASE = new PathInterpolator(0.18f, 1.0f, 0.28f, 1.0f);
+    private static final PathInterpolator SHEET_OPEN_EASE = new PathInterpolator(0.20f, 0.90f, 0.22f, 1.0f);
     private static final PathInterpolator SHEET_CLOSE_EASE = new PathInterpolator(0.40f, 0f, 0.75f, 1f);
 
     public interface IntCallback {
@@ -414,7 +414,7 @@ public final class CouiBottomSheet {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setClickable(true);
         card.setFocusable(true);
-        card.setClipChildren(true);
+        card.setClipChildren(false);
         card.setClipToPadding(!lfDocked);
         GradientDrawable cardBg = new GradientDrawable();
         cardBg.setShape(GradientDrawable.RECTANGLE);
@@ -543,7 +543,7 @@ public final class CouiBottomSheet {
                         .scaleX(1f)
                         .scaleY(1f)
                         .alpha(1f)
-                        .setDuration(280L)
+                        .setDuration(370L)
                         .setInterpolator(POPUP_OPEN_EASE)
                         .start();
             } else if (lfDocked) {
@@ -552,7 +552,7 @@ public final class CouiBottomSheet {
                 card.setAlpha(1f);
                 float startSlide = Math.max(260f * d, card.getHeight() > 0 ? card.getHeight() : 320f * d);
                 card.setTranslationY(startSlide);
-                LivingFlowEffects.FluidSpring slideSpring = LivingFlowEffects.FluidSpring.fromCoui(0.34f, 0.02f)
+                LivingFlowEffects.FluidSpring slideSpring = LivingFlowEffects.FluidSpring.fromCoui(0.45f, 0.02f)
                         .setThresholds(0.4f, 3.0f);
                 dialog.attachOpenSpring(slideSpring);
                 slideSpring.setValue(startSlide);
@@ -568,7 +568,7 @@ public final class CouiBottomSheet {
                         .scaleX(1f)
                         .scaleY(1f)
                         .alpha(1f)
-                        .setDuration(320L)
+                        .setDuration(420L)
                         .setInterpolator(SHEET_OPEN_EASE)
                         .start();
             }
@@ -578,7 +578,7 @@ public final class CouiBottomSheet {
     }
 
     private static final class AnimatedDialog extends Dialog {
-        private static final PathInterpolator DOCKED_DISMISS_EASE = new PathInterpolator(0.35f, 0.0f, 0.68f, 1.0f);
+        private static final PathInterpolator DOCKED_DISMISS_EASE = new PathInterpolator(0.32f, 0.0f, 0.55f, 1.0f);
         private final View card;
         private final float density;
         private final boolean centerMode;
@@ -633,7 +633,7 @@ public final class CouiBottomSheet {
                         .scaleX(0.90f)
                         .scaleY(0.90f)
                         .alpha(0f)
-                        .setDuration(170L)
+                        .setDuration(250L)
                         .setInterpolator(SHEET_CLOSE_EASE)
                         .withEndAction(() -> {
                             try {
@@ -646,7 +646,7 @@ public final class CouiBottomSheet {
                 float endSlide = Math.max(240f * density, card.getHeight());
                 card.animate()
                         .translationY(endSlide)
-                        .setDuration(220L)
+                        .setDuration(320L)
                         .setInterpolator(DOCKED_DISMISS_EASE)
                         .withEndAction(() -> {
                             try {
@@ -661,7 +661,7 @@ public final class CouiBottomSheet {
                         .scaleX(0.97f)
                         .scaleY(0.97f)
                         .alpha(0f)
-                        .setDuration(200L)
+                        .setDuration(290L)
                         .setInterpolator(SHEET_CLOSE_EASE)
                         .withEndAction(() -> {
                             try {
@@ -684,8 +684,6 @@ public final class CouiBottomSheet {
         LinearLayout bar = new LinearLayout(ctx);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setOutlineProvider(null);
-        bar.setTranslationZ(16f * d);
         bar.setClipChildren(false);
         bar.setClipToPadding(false);
         bar.setPadding(0, Math.round(6f * d), 0, Math.round(10f * d));
@@ -1287,6 +1285,8 @@ public final class CouiBottomSheet {
         float d = ctx.getResources().getDisplayMetrics().density;
         LinearLayout row = new LinearLayout(ctx);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
         int h = Math.round(46f * d);
 
         Button leftBtn = createPillButton(ctx, pal, leftText, leftStyle, leftClick);
@@ -1868,7 +1868,7 @@ public final class CouiBottomSheet {
             row.animate().cancel();
             row.setPivotX(row.getWidth() * 0.5f);
             row.setPivotY(row.getHeight() * 0.5f);
-            row.animate().scaleX(targetScale).scaleY(targetScale).setDuration(90L).start();
+            row.animate().scaleX(targetScale).scaleY(targetScale).setDuration(140L).start();
         }
 
         private void updateHover(int newIdx, boolean immediatePos) {
@@ -2107,8 +2107,8 @@ public final class CouiBottomSheet {
                 target.setScaleX(0.24f);
                 target.setScaleY(0.24f);
                 target.setVisibility(View.VISIBLE);
-                scaleSpring.setCouiParams(0.28f, 0.14f);
-                alphaSpring.setCouiParams(0.18f, 0.0f).setThresholds(0.004f, 0.02f);
+                scaleSpring.setCouiParams(0.38f, 0.12f);
+                alphaSpring.setCouiParams(0.26f, 0.0f).setThresholds(0.004f, 0.02f);
                 scaleSpring.setValue(0.24f);
                 alphaSpring.setValue(0f);
                 applyLivingFlowAlpha(0f);
@@ -2123,10 +2123,10 @@ public final class CouiBottomSheet {
                         .scaleX(1f)
                         .scaleY(1f)
                         .translationY(0f)
-                        .setDuration(280L)
+                        .setDuration(360L)
                         .setInterpolator(POPUP_OPEN_EASE)
                         .start();
-                ObjectAnimator.ofFloat(target, View.ALPHA, 0f, 1f).setDuration(180L).start();
+                ObjectAnimator.ofFloat(target, View.ALPHA, 0f, 1f).setDuration(240L).start();
             }
         }
 
@@ -2172,10 +2172,10 @@ public final class CouiBottomSheet {
                 }
                 curScale = Math.max(0.24f, Math.max(target.getScaleX(), target.getScaleY()));
                 curAlpha = Math.max(0f, Math.min(1f, curAlpha));
-                scaleSpring.setCouiParams(0.22f, 0.0f).setValue(curScale);
-                alphaSpring.setCouiParams(0.16f, 0.0f).setThresholds(0.015f, 0.05f).setValue(curAlpha);
+                scaleSpring.setCouiParams(0.30f, 0.0f).setValue(curScale);
+                alphaSpring.setCouiParams(0.22f, 0.0f).setThresholds(0.015f, 0.05f).setValue(curAlpha);
                 target.removeCallbacks(forceDismissRunnable);
-                target.postDelayed(forceDismissRunnable, 260L);
+                target.postDelayed(forceDismissRunnable, 360L);
                 scaleSpring.animateTo(0.24f);
                 alphaSpring.animateTo(0f);
                 return;
@@ -2186,7 +2186,7 @@ public final class CouiBottomSheet {
                     .scaleY(0.60f)
                     .translationY((showAbove ? 8f : -8f) * density)
                     .alpha(0f)
-                    .setDuration(160L)
+                    .setDuration(230L)
                     .setInterpolator(POPUP_CLOSE_EASE)
                     .withEndAction(() -> {
                         clearAnchorDetachGuard();
@@ -2403,7 +2403,7 @@ public final class CouiBottomSheet {
                 if (checked) {
                     setScaleX(0.82f);
                     setScaleY(0.82f);
-                    animate().scaleX(1f).scaleY(1f).setDuration(180L).setInterpolator(FLUID_EASE).start();
+                    animate().scaleX(1f).scaleY(1f).setDuration(240L).setInterpolator(FLUID_EASE).start();
                 }
             }
         }
@@ -2494,7 +2494,7 @@ public final class CouiBottomSheet {
                 if (target) {
                     setScaleX(0.82f);
                     setScaleY(0.82f);
-                    animate().scaleX(1f).scaleY(1f).setDuration(180L).setInterpolator(FLUID_EASE).start();
+                    animate().scaleX(1f).scaleY(1f).setDuration(240L).setInterpolator(FLUID_EASE).start();
                 }
             }
         }

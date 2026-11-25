@@ -172,7 +172,7 @@ public final class LivingFlowEffects {
         private RuntimeShader runtimeShader;
         private RuntimeShader edgeShader;
 
-        private final FluidSpring glowSpring = new FluidSpring(460f, 0.84f).setThresholds(0.002f, 0.02f);
+        private final FluidSpring glowSpring = new FluidSpring(300f, 0.88f).setThresholds(0.002f, 0.02f);
 
         public SpotLightDrawable(boolean dark, float density, float cornerRadiusDp,
                                  boolean isCircle, boolean isCapsule, float maxIntensity, float maxRadiusDp) {
@@ -672,9 +672,9 @@ public final class LivingFlowEffects {
                 case GLASS_CIRCLE:
                     // Official Clock.apk COUITouchMotionAnimator + PressParams + 0.05 rubber curve
                     pressedScale = 0.93f;
-                    pressResp = 0.22f;
+                    pressResp = 0.27f;
                     pressBounce = 0.0f;
-                    relResp = 0.40f;
+                    relResp = 0.50f;
                     relBounce = 0.24f;
                     maxDriftPx = allowDrift ? (28f * d) : 0f;
                     maxDeformGain = allowDrift ? 0.04f : 0f;
@@ -686,9 +686,9 @@ public final class LivingFlowEffects {
                     break;
                 case HERO_CARD:
                     pressedScale = 0.985f;
-                    pressResp = 0.24f;
+                    pressResp = 0.30f;
                     pressBounce = 0.0f;
-                    relResp = 0.42f;
+                    relResp = 0.52f;
                     relBounce = 0.12f;
                     maxDriftPx = 0f;
                     maxDeformGain = 0f;
@@ -701,9 +701,9 @@ public final class LivingFlowEffects {
                 case PRIMARY_BUTTON:
                     // Official Clock.apk wide capsule button: scaleRangeMax = 0.97f, in-place compression
                     pressedScale = 0.97f;
-                    pressResp = 0.22f;
+                    pressResp = 0.27f;
                     pressBounce = 0.0f;
-                    relResp = 0.38f;
+                    relResp = 0.48f;
                     relBounce = 0.18f;
                     maxDriftPx = 0f;
                     maxDeformGain = 0f;
@@ -716,9 +716,9 @@ public final class LivingFlowEffects {
                 case ACTION_ROW:
                 default:
                     pressedScale = 0.99f;
-                    pressResp = 0.20f;
+                    pressResp = 0.25f;
                     pressBounce = 0.0f;
-                    relResp = 0.36f;
+                    relResp = 0.45f;
                     relBounce = 0.08f;
                     maxDriftPx = 0f;
                     maxDeformGain = 0f;
@@ -896,12 +896,12 @@ public final class LivingFlowEffects {
                     case MotionEvent.ACTION_CANCEL:
                         scaleSpring.setCouiParams(relResp, relBounce).animateTo(1f);
                         if (maxDriftPx > 0f) {
-                            txSpring.setCouiParams(0.40f, 0.22f).animateTo(0f);
-                            tySpring.setCouiParams(0.40f, 0.22f).animateTo(0f);
+                            txSpring.setCouiParams(0.50f, 0.22f).animateTo(0f);
+                            tySpring.setCouiParams(0.50f, 0.22f).animateTo(0f);
                         }
                         if (maxDeformGain > 0f) {
-                            deformXSpring.setCouiParams(0.40f, 0.22f).animateTo(1f);
-                            deformYSpring.setCouiParams(0.40f, 0.22f).animateTo(1f);
+                            deformXSpring.setCouiParams(0.50f, 0.22f).animateTo(1f);
+                            deformYSpring.setCouiParams(0.50f, 0.22f).animateTo(1f);
                         }
                         if (spot != null) {
                             spot.onRelease();
@@ -958,7 +958,7 @@ public final class LivingFlowEffects {
     public static final class NavBarElasticController {
         private final View target;
         private final float density;
-        private final FluidSpring pressSpring = FluidSpring.fromCoui(0.25f, 0.0f).setThresholds(0.0005f, 0.005f);
+        private final FluidSpring pressSpring = FluidSpring.fromCoui(0.30f, 0.0f).setThresholds(0.0005f, 0.005f);
         private final FluidSpring txSpring = FluidSpring.fromCoui(0.15f, 0.15f).setThresholds(0.12f, 1.5f);
         private final FluidSpring tySpring = FluidSpring.fromCoui(0.15f, 0.15f).setThresholds(0.12f, 1.5f);
         private final FluidSpring deformXSpring = FluidSpring.fromCoui(0.15f, 0.15f).setThresholds(0.0005f, 0.005f);
@@ -1016,7 +1016,7 @@ public final class LivingFlowEffects {
                 target.setPivotX(w * 0.5f);
                 target.setPivotY(h * 0.5f);
             }
-            pressSpring.setCouiParams(0.25f, 0.0f).animateTo(0.97f);
+            pressSpring.setCouiParams(0.30f, 0.0f).animateTo(0.97f);
             txSpring.setCouiParams(0.15f, 0.15f).animateTo(0f);
             tySpring.setCouiParams(0.15f, 0.15f).animateTo(0f);
             deformXSpring.setCouiParams(0.15f, 0.15f).animateTo(1f);
@@ -1072,11 +1072,11 @@ public final class LivingFlowEffects {
         }
 
         public void onRelease() {
-            pressSpring.setCouiParams(0.42f, 0.18f).animateTo(1f);
-            txSpring.setCouiParams(0.42f, 0.20f).animateTo(0f);
-            tySpring.setCouiParams(0.42f, 0.20f).animateTo(0f);
-            deformXSpring.setCouiParams(0.42f, 0.20f).animateTo(1f);
-            deformYSpring.setCouiParams(0.42f, 0.20f).animateTo(1f);
+            pressSpring.setCouiParams(0.52f, 0.18f).animateTo(1f);
+            txSpring.setCouiParams(0.52f, 0.20f).animateTo(0f);
+            tySpring.setCouiParams(0.52f, 0.20f).animateTo(0f);
+            deformXSpring.setCouiParams(0.52f, 0.20f).animateTo(1f);
+            deformYSpring.setCouiParams(0.52f, 0.20f).animateTo(1f);
         }
 
         public void cancel() {

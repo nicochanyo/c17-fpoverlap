@@ -103,7 +103,8 @@ public class MainActivity extends Activity {
     private static final int TAB_APPEARANCE = 1;
     private static final int TAB_ABOUT = 2;
 
-    private static final PathInterpolator FLUID_EASE = new PathInterpolator(0.22f, 1.0f, 0.36f, 1.0f);
+    private static final PathInterpolator FLUID_EASE = new PathInterpolator(0.22f, 0.88f, 0.25f, 1.0f);
+    private static final PathInterpolator SUBPAGE_EASE = new PathInterpolator(0.28f, 0.0f, 0.12f, 1.0f);
     private static final OvershootInterpolator ICON_SPRING = new OvershootInterpolator(1.25f);
     private static final OvershootInterpolator NAV_SPRING_BACK = new OvershootInterpolator(1.15f);
     private static final float COLLAPSED_TITLE_SCALE = 0.70f;
@@ -1028,7 +1029,7 @@ public class MainActivity extends Activity {
             return;
         }
         headerCollapseAnimator = ValueAnimator.ofFloat(headerCollapseProgress, target);
-        headerCollapseAnimator.setDuration(260L);
+        headerCollapseAnimator.setDuration(340L);
         headerCollapseAnimator.setInterpolator(FLUID_EASE);
         headerCollapseAnimator.addUpdateListener(anim -> applyHeaderCollapseProgress((Float) anim.getAnimatedValue()));
         headerCollapseAnimator.start();
@@ -1235,9 +1236,10 @@ public class MainActivity extends Activity {
             View btn = findViewById(id);
             if (btn != null) {
                 boolean isPrimary = (id == R.id.btnRestartUiLock || id == R.id.btnRestartUiFc);
+                boolean enableCaustic = (id != R.id.btnMinus && id != R.id.btnPlus);
                 LivingFlowEffects.TouchFeedback.attach(btn,
                         LivingFlowEffects.TouchFeedback.Profile.PRIMARY_BUTTON, dark, 999f, false, true);
-                ColorOsLivingFlowEngine.applyLuminousPillButton(btn, isPrimary, accent, dark, true);
+                ColorOsLivingFlowEngine.applyLuminousPillButton(btn, isPrimary, accent, dark, enableCaustic);
             }
         }
 
@@ -1317,8 +1319,8 @@ public class MainActivity extends Activity {
 
                     final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
                     subpageTransitionAnimator = anim;
-                    anim.setDuration(240L);
-                    anim.setInterpolator(FLUID_EASE);
+                    anim.setDuration(340L);
+                    anim.setInterpolator(SUBPAGE_EASE);
                     anim.addUpdateListener(a -> {
                         float t = (Float) a.getAnimatedValue();
                         layoutFcSubpageRoot.setTranslationX(startSubX * (1f - t));
@@ -2593,8 +2595,8 @@ public class MainActivity extends Activity {
 
         final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
         subpageTransitionAnimator = anim;
-        anim.setDuration(320L);
-        anim.setInterpolator(FLUID_EASE);
+        anim.setDuration(440L);
+        anim.setInterpolator(SUBPAGE_EASE);
         anim.addUpdateListener(animation -> {
             float t = (Float) animation.getAnimatedValue();
             layoutFcSubpageRoot.setTranslationX(slideDist * (1f - t));
@@ -2690,8 +2692,8 @@ public class MainActivity extends Activity {
 
         final ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
         subpageTransitionAnimator = anim;
-        anim.setDuration(280L);
-        anim.setInterpolator(FLUID_EASE);
+        anim.setDuration(390L);
+        anim.setInterpolator(SUBPAGE_EASE);
         anim.addUpdateListener(animation -> {
             float t = (Float) animation.getAnimatedValue();
             if (layoutFcSubpageRoot != null) {
@@ -4170,7 +4172,7 @@ public class MainActivity extends Activity {
                     p.animate()
                             .translationX(0f)
                             .alpha(1f)
-                            .setDuration(300L)
+                            .setDuration(380L)
                             .setInterpolator(FLUID_EASE)
                             .withEndAction(null)
                             .setUpdateListener(anim -> {
@@ -4184,7 +4186,7 @@ public class MainActivity extends Activity {
                     p.animate()
                             .translationX(-dir * dist)
                             .alpha(0f)
-                            .setDuration(270L)
+                            .setDuration(340L)
                             .setInterpolator(FLUID_EASE)
                             .withEndAction(new Runnable() {
                                 @Override
@@ -4238,7 +4240,7 @@ public class MainActivity extends Activity {
                 tvPageTitle.setTranslationX(dir * dp(12));
                 tvPageTitle.animate()
                         .translationX(0f)
-                        .setDuration(260L)
+                        .setDuration(340L)
                         .setInterpolator(FLUID_EASE)
                         .start();
 
@@ -4246,7 +4248,7 @@ public class MainActivity extends Activity {
                 tvPageSubtitle.setTranslationX(dir * dp(10));
                 tvPageSubtitle.animate()
                         .translationX(0f)
-                        .setDuration(260L)
+                        .setDuration(340L)
                         .setInterpolator(FLUID_EASE)
                         .start();
 
@@ -4254,7 +4256,7 @@ public class MainActivity extends Activity {
                 subtitleTabAlpha = 0.25f;
                 syncHeaderToScrollY(targetScrollY, true);
                 subtitleTabFadeAnimator = ValueAnimator.ofFloat(0.25f, 1f);
-                subtitleTabFadeAnimator.setDuration(260L);
+                subtitleTabFadeAnimator.setDuration(340L);
                 subtitleTabFadeAnimator.setInterpolator(FLUID_EASE);
                 subtitleTabFadeAnimator.addUpdateListener(anim -> {
                     float a = (Float) anim.getAnimatedValue();
@@ -4277,7 +4279,7 @@ public class MainActivity extends Activity {
             tvPageTitle.animate()
                     .translationX(0f)
                     .alpha(1f)
-                    .setDuration(260L)
+                    .setDuration(340L)
                     .setInterpolator(FLUID_EASE)
                     .start();
 
@@ -4285,14 +4287,14 @@ public class MainActivity extends Activity {
             tvPageSubtitle.setTranslationX(dir * dp(14));
             tvPageSubtitle.animate()
                     .translationX(0f)
-                    .setDuration(260L)
+                    .setDuration(340L)
                     .setInterpolator(FLUID_EASE)
                     .start();
 
             subtitleTabAlpha = 0.25f;
             syncHeaderToScrollY(targetScrollY, true);
             subtitleTabFadeAnimator = ValueAnimator.ofFloat(0.25f, 1f);
-            subtitleTabFadeAnimator.setDuration(260L);
+            subtitleTabFadeAnimator.setDuration(340L);
             subtitleTabFadeAnimator.setInterpolator(FLUID_EASE);
             subtitleTabFadeAnimator.addUpdateListener(anim -> {
                 subtitleTabAlpha = (Float) anim.getAnimatedValue();
@@ -4463,7 +4465,7 @@ public class MainActivity extends Activity {
                         float dyDown = rawY - navDownRawY;
                         if (!navDragging && Math.hypot(dxDown, dyDown) > Math.max(dp(5), touchSlop * 0.5f)) {
                             navDragging = true;
-                            vNavSlidingPill.animate().scaleX(1.04f).scaleY(1.04f).setDuration(110L).start();
+                            vNavSlidingPill.animate().scaleX(1.04f).scaleY(1.04f).setDuration(150L).start();
                         }
                         if (navDragging && navItemsWidth > 0f) {
                             float fingerLocalX = rawX - navItemsRestLeftScreenX;
@@ -4522,7 +4524,7 @@ public class MainActivity extends Activity {
                                     .translationY(0f)
                                     .scaleX(1.0f)
                                     .scaleY(1.0f)
-                                    .setDuration(240L)
+                                    .setDuration(320L)
                                     .setInterpolator(FLUID_EASE)
                                     .start();
                             layoutBottomNav.animate()
@@ -4530,7 +4532,7 @@ public class MainActivity extends Activity {
                                     .translationY(0f)
                                     .scaleX(1.0f)
                                     .scaleY(1.0f)
-                                    .setDuration(280L)
+                                    .setDuration(360L)
                                     .setInterpolator(NAV_SPRING_BACK)
                                     .start();
                         }
@@ -4594,7 +4596,7 @@ public class MainActivity extends Activity {
                             .translationY(-dp(1))
                             .scaleX(1.08f)
                             .scaleY(1.08f)
-                            .setDuration(320L)
+                            .setDuration(400L)
                             .setInterpolator(ICON_SPRING)
                             .start();
 
@@ -4603,7 +4605,7 @@ public class MainActivity extends Activity {
                     navLabels[i].animate()
                             .translationX(0f)
                             .alpha(1.0f)
-                            .setDuration(260L)
+                            .setDuration(340L)
                             .setInterpolator(FLUID_EASE)
                             .start();
                 } else {
@@ -4616,7 +4618,7 @@ public class MainActivity extends Activity {
                             .translationY(0f)
                             .scaleX(1.0f)
                             .scaleY(1.0f)
-                            .setDuration(240L)
+                            .setDuration(310L)
                             .setInterpolator(FLUID_EASE)
                             .start();
                     navLabels[i].setTranslationX(0f);
@@ -4659,12 +4661,12 @@ public class MainActivity extends Activity {
             vNavSlidingPill.animate()
                     .translationX(targetX)
                     .translationY(targetY)
-                    .setDuration(300L)
+                    .setDuration(380L)
                     .setInterpolator(FLUID_EASE)
                     .start();
 
             navPillMorphAnimator = ValueAnimator.ofFloat(0f, 1f);
-            navPillMorphAnimator.setDuration(300L);
+            navPillMorphAnimator.setDuration(380L);
             navPillMorphAnimator.setInterpolator(FLUID_EASE);
             navPillMorphAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
                 @Override
@@ -4936,7 +4938,7 @@ public class MainActivity extends Activity {
             if (animateChevron) {
                 ivFcTintChevron.animate()
                         .rotation(targetRot)
-                        .setDuration(220L)
+                        .setDuration(300L)
                         .setInterpolator(FLUID_EASE)
                         .start();
             } else {
@@ -5017,7 +5019,7 @@ public class MainActivity extends Activity {
                 }
                 dividerFcTintPicker.animate()
                         .alpha(1f)
-                        .setDuration(220L)
+                        .setDuration(280L)
                         .setInterpolator(FLUID_EASE)
                         .start();
             }
@@ -5033,7 +5035,7 @@ public class MainActivity extends Activity {
 
             final ValueAnimator anim = ValueAnimator.ofInt(startH, targetH);
             fcColorPickerAnimator = anim;
-            anim.setDuration(340L);
+            anim.setDuration(440L);
             anim.setInterpolator(FLUID_EASE);
             anim.addUpdateListener(animation -> {
                 ViewGroup.LayoutParams curLp = layoutFcColorPickerWrap.getLayoutParams();
@@ -5088,14 +5090,14 @@ public class MainActivity extends Activity {
             if (dividerFcTintPicker != null && dividerFcTintPicker.getVisibility() == View.VISIBLE) {
                 dividerFcTintPicker.animate()
                         .alpha(0f)
-                        .setDuration(200L)
+                        .setDuration(250L)
                         .setInterpolator(FLUID_EASE)
                         .start();
             }
 
             final ValueAnimator anim = ValueAnimator.ofInt(startH, 0);
             fcColorPickerAnimator = anim;
-            anim.setDuration(280L);
+            anim.setDuration(370L);
             anim.setInterpolator(FLUID_EASE);
             anim.addUpdateListener(animation -> {
                 ViewGroup.LayoutParams curLp = layoutFcColorPickerWrap.getLayoutParams();

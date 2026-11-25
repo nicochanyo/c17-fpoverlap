@@ -491,7 +491,7 @@ public final class LivingFlowUpdatePages {
                 outTitle.animate()
                         .alpha(0f)
                         .translationX(toNotes ? -titleShift : titleShift)
-                        .setDuration(260L)
+                        .setDuration(340L)
                         .setInterpolator(PUSH_EASE)
                         .withEndAction(() -> {
                             if (switchGen[0] == gen) {
@@ -507,7 +507,7 @@ public final class LivingFlowUpdatePages {
                 inTitle.animate()
                         .alpha(1f)
                         .translationX(0f)
-                        .setDuration(300L)
+                        .setDuration(380L)
                         .setInterpolator(PUSH_EASE)
                         .start();
 
@@ -515,7 +515,7 @@ public final class LivingFlowUpdatePages {
                 outBody.animate()
                         .alpha(0f)
                         .translationX(outTargetX)
-                        .setDuration(250L)
+                        .setDuration(320L)
                         .setInterpolator(PUSH_EASE)
                         .withEndAction(() -> {
                             if (switchGen[0] == gen) {
@@ -535,7 +535,7 @@ public final class LivingFlowUpdatePages {
                 inBody.animate()
                         .alpha(1f)
                         .translationX(0f)
-                        .setDuration(340L)
+                        .setDuration(420L)
                         .setInterpolator(PUSH_EASE)
                         .start();
             }
@@ -571,7 +571,7 @@ public final class LivingFlowUpdatePages {
                     changelogScroll.animate()
                             .translationX(0f)
                             .alpha(1f)
-                            .setDuration(240L)
+                            .setDuration(320L)
                             .setInterpolator(PUSH_EASE)
                             .start();
                 }
@@ -775,7 +775,7 @@ public final class LivingFlowUpdatePages {
                     .scaleX(1f)
                     .scaleY(1f)
                     .setStartDelay(60L)
-                    .setDuration(340L)
+                    .setDuration(420L)
                     .setInterpolator(PUSH_EASE)
                     .start();
 
@@ -805,7 +805,7 @@ public final class LivingFlowUpdatePages {
                     .alpha(1f)
                     .translationY(0f)
                     .setStartDelay(85L)
-                    .setDuration(360L)
+                    .setDuration(440L)
                     .setInterpolator(PUSH_EASE)
                     .start();
         }
@@ -1042,14 +1042,14 @@ public final class LivingFlowUpdatePages {
             underView.animate().cancel();
             underView.animate()
                     .translationX(-width * 0.28f)
-                    .setDuration(380L)
+                    .setDuration(460L)
                     .setInterpolator(PUSH_EASE)
                     .start();
         }
-        entry.dimOverlay.animate().alpha(0.32f).setDuration(380L).setInterpolator(PUSH_EASE).start();
+        entry.dimOverlay.animate().alpha(0.32f).setDuration(460L).setInterpolator(PUSH_EASE).start();
         entry.root.animate()
                 .translationX(0f)
-                .setDuration(380L)
+                .setDuration(460L)
                 .setInterpolator(PUSH_EASE)
                 .start();
     }
@@ -1085,14 +1085,14 @@ public final class LivingFlowUpdatePages {
             underView.animate().cancel();
             underView.animate()
                     .translationX(0f)
-                    .setDuration(340L)
+                    .setDuration(420L)
                     .setInterpolator(POP_EASE)
                     .start();
         }
         entry.dimOverlay.animate().cancel();
         entry.dimOverlay.animate()
                 .alpha(0f)
-                .setDuration(340L)
+                .setDuration(420L)
                 .setInterpolator(POP_EASE)
                 .withEndAction(() -> safeRemove(stage.container, entry.dimOverlay))
                 .start();
@@ -1100,7 +1100,7 @@ public final class LivingFlowUpdatePages {
         entry.root.animate().cancel();
         entry.root.animate()
                 .translationX(width)
-                .setDuration(340L)
+                .setDuration(420L)
                 .setInterpolator(POP_EASE)
                 .withEndAction(() -> {
                     safeRemove(stage.container, entry.root);
@@ -1188,7 +1188,7 @@ public final class LivingFlowUpdatePages {
     private static void animateCrossFade(View v) {
         v.animate().cancel();
         v.setAlpha(0.35f);
-        v.animate().alpha(1f).setDuration(200L).setInterpolator(PUSH_EASE).start();
+        v.animate().alpha(1f).setDuration(270L).setInterpolator(PUSH_EASE).start();
     }
 
     private static void addCollapsibleSection(Context ctx, LinearLayout card, float d,
@@ -1257,7 +1257,7 @@ public final class LivingFlowUpdatePages {
                     .scaleX(1f)
                     .scaleY(1f)
                     .rotation(expanded[0] ? 0f : 180f)
-                    .setDuration(260L)
+                    .setDuration(340L)
                     .setInterpolator(PUSH_EASE)
                     .start();
             bodyWrap.setExpandedAnimated(expanded[0]);
@@ -1390,7 +1390,7 @@ public final class LivingFlowUpdatePages {
                 animator.cancel();
             }
             animator = ValueAnimator.ofFloat(fraction, target);
-            animator.setDuration(280L);
+            animator.setDuration(370L);
             animator.setInterpolator(PUSH_EASE);
             animator.addUpdateListener(a -> {
                 fraction = (Float) a.getAnimatedValue();
@@ -1815,13 +1815,13 @@ public final class LivingFlowUpdatePages {
                 } else if (commitBack) {
                     popEntry(stage, entry);
                 } else {
-                    animate().translationX(0f).setDuration(260L).setInterpolator(PUSH_EASE).start();
+                    animate().translationX(0f).setDuration(360L).setInterpolator(PUSH_EASE).start();
                     if (under != null) {
                         under.animate().translationX(-width * 0.28f)
-                                .setDuration(260L).setInterpolator(PUSH_EASE).start();
+                                .setDuration(360L).setInterpolator(PUSH_EASE).start();
                     }
                     entry.dimOverlay.animate().alpha(0.32f)
-                            .setDuration(260L).setInterpolator(PUSH_EASE).start();
+                            .setDuration(360L).setInterpolator(PUSH_EASE).start();
                 }
                 return true;
             }

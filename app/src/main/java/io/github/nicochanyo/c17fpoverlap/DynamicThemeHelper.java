@@ -453,8 +453,8 @@ public final class DynamicThemeHelper {
         unchecked.setSize(w, h);
 
         StateListDrawable states = new StateListDrawable();
-        states.setEnterFadeDuration(150);
-        states.setExitFadeDuration(150);
+        states.setEnterFadeDuration(220);
+        states.setExitFadeDuration(220);
         states.addState(new int[]{android.R.attr.state_checked}, checked);
         states.addState(new int[]{}, unchecked);
         return states;
