@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">模組已啟用</string>
     <string name="status_title_inactive">模組未啟用</string>
-    <string name="status_sub_active">v1.1.1 (1101) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.2 (1102) · com.android.systemui</string>
     <string name="status_sub_inactive">請在 LSPosed 勾選「系統介面」並重啟</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.1.1</string>
+    <string name="chip_version">v1.1.2</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -130,12 +130,14 @@
     <string name="summary_fc_masks_removed_fmt" formatted="false">已移除 %d 處遮罩</string>
     <string name="summary_fc_masks_stock">系統預設</string>
 
-    <string name="sub_fc_tint">卡片底色</string>
+    <string name="sub_fc_tint">自訂配色</string>
     <string name="pref_fc_follow_stock_title">使用系統預設底色</string>
     <string name="pref_fc_follow_stock_summary">維持原本底色，僅調整透明度與模糊</string>
     <string name="pref_fc_color_title">自訂卡片底色</string>
     <string name="pref_fc_color_summary">點擊選色或輸入 HEX 色碼</string>
-    <string name="pref_fc_custom_color_summary">關閉後跟隨系統預設底色</string>
+    <string name="pref_fc_custom_color_summary">非媒體卡片生效，跟隨媒體時讓位</string>
+    <string name="pref_fc_custom_mask_color_title">自訂漸變遮罩顏色</string>
+    <string name="pref_fc_custom_mask_color_summary">非媒體遮罩生效，跟隨媒體時讓位</string>
     <string name="label_stock_tint">系統預設</string>
     <string name="label_color_value">顏色值</string>
     <string name="dialog_hex_input_hint">輸入 6 位 HEX 色碼（如 4FC3F7）</string>
@@ -194,6 +196,8 @@
     <string name="btn_update_open_repo">開啟倉庫頁面</string>
     <string name="dialog_changelog_title">更新日誌</string>
     <string name="btn_close">關閉</string>
+    <string name="changelog_v112_title">v1.1.2</string>
+    <string name="changelog_v112_body" formatted="false">• 自訂配色改為僅作用於非媒體卡片，媒體卡片及開啟「非媒體卡片跟隨媒體變色」且有媒體活躍時自動讓位給媒體封面色，避免底色與遮罩混色\n• 新增「自訂漸變遮罩顏色」獨立選色板，並為兩者加入 ARGB 透明度滑桿調節\n• 新增版本更新後首次開啟自動彈出更新說明</string>
     <string name="changelog_v111_title">v1.1.1</string>
     <string name="changelog_v111_body" formatted="false">• 修復開啟高光且非媒體遮罩透明度設為 0 時，卡片左右下角高光 R 角不對齊的問題\n• 鎖屏／通知欄漸變遮罩與底部高光統一對齊系統 G2 平滑圓角與橫向滑動偏移\n• 新增 ColorOS 17 新版介面，並保留經典介面切換選項\n• 外觀設定重構為獨立二級頁面，卡片底色改為可收納色板</string>
     <string name="changelog_v110_title">v1.1.0</string>

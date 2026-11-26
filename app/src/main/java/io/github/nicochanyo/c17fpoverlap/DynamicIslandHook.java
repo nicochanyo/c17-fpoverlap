@@ -725,6 +725,82 @@ public final class DynamicIslandHook {
         return false;
     }
 
+    static boolean hasActiveLockMiniMedia() {
+        List<Object> minis;
+        synchronized (ACTIVE_MINI_SECTIONS) {
+            minis = ACTIVE_MINI_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MINI_SECTIONS.keySet());
+        }
+        for (int i = 0, n = minis.size(); i < n; i++) {
+            Object m0 = minis.get(i);
+            if (m0 == null) {
+                continue;
+            }
+            View c = readViewField(m0, "c");
+            if (c != null && c.isAttachedToWindow() && c.getVisibility() == View.VISIBLE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isDescendantOf(View child, View ancestor) {
+        View cur = child;
+        for (int depth = 0; depth < 20 && cur != null; depth++) {
+            if (cur == ancestor) {
+                return true;
+            }
+            ViewParent p = cur.getParent();
+            cur = p instanceof View ? (View) p : null;
+        }
+        return false;
+    }
+
+    static boolean isViewContainingMedia(View root) {
+        if (root == null) {
+            return false;
+        }
+        if (hasMediaBgViewInTree(root)) {
+            return true;
+        }
+        List<Object> minis;
+        synchronized (ACTIVE_MINI_SECTIONS) {
+            minis = ACTIVE_MINI_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MINI_SECTIONS.keySet());
+        }
+        for (int i = 0, n = minis.size(); i < n; i++) {
+            Object m0 = minis.get(i);
+            if (m0 == null) {
+                continue;
+            }
+            View c = readViewField(m0, "c");
+            if (c != null && c.isAttachedToWindow() && c.getVisibility() == View.VISIBLE
+                    && isDescendantOf(c, root)) {
+                return true;
+            }
+        }
+        List<Object> sections;
+        synchronized (ACTIVE_MEDIA_SECTIONS) {
+            sections = ACTIVE_MEDIA_SECTIONS.isEmpty()
+                    ? Collections.emptyList()
+                    : new ArrayList<>(ACTIVE_MEDIA_SECTIONS.keySet());
+        }
+        for (int i = 0, n = sections.size(); i < n; i++) {
+            Object sec = sections.get(i);
+            if (sec == null) {
+                continue;
+            }
+            View s = readViewField(sec, "s");
+            if (s != null && s.isAttachedToWindow() && s.getVisibility() == View.VISIBLE
+                    && isDescendantOf(s, root)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static boolean hasActiveShadeMediaFluidCloud() {
         if (FluidCloudHook.isCurrentlyOnLockscreen()) {
             sLastShadeMediaActive = false;
@@ -1059,6 +1135,21 @@ public final class DynamicIslandHook {
                         if (iv != null && iv.isAttachedToWindow()) {
                             patchViewBackgroundLayers(iv, cfg);
                             iv.invalidate();
+                        }
+                    }
+                    if (cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled()) {
+                        List<Object> vrms;
+                        synchronized (VRM_TO_VIEW) {
+                            vrms = VRM_TO_VIEW.isEmpty()
+                                    ? Collections.emptyList()
+                                    : new ArrayList<>(VRM_TO_VIEW.keySet());
+                        }
+                        for (int i = 0, n = vrms.size(); i < n; i++) {
+                            Object vrm = vrms.get(i);
+                            View vrmHost = vrm != null ? VRM_TO_VIEW.get(vrm) : null;
+                            if (vrm != null && vrmHost != null && vrmHost.isAttachedToWindow()) {
+                                ensureVrmSynced(vrm, cfg);
+                            }
                         }
                     }
                     invalidateActiveLockLights();
@@ -2057,8 +2148,23 @@ public final class DynamicIslandHook {
                                     float alphaCurve = (float) Math.pow(t, 1.25);
                                     float colorMix = (float) Math.pow(1.0f - t, 1.15);
                                     int outAlpha = Math.max(0, Math.min(255, Math.round(255.0f * alphaCurve)));
-                                    int fcColor = cfg.getFcColor();
-                                    int targetRgb = fcColor != 0 ? (fcColor & 0x00FFFFFF) : 0x1E2026;
+                                    boolean useCustom = cfg.isFcColorEnabled()
+                                            && !shouldSuppressTopCustomColor(resolveDrawableHostView(cd), cfg);
+                                    int fcColor = useCustom ? cfg.getFcColor() : 0;
+                                    float colorAlpha = useCustom ? ConfigStore.colorAlphaScale(fcColor) : 0.0f;
+                                    int baseRgb = 0x1E2026;
+                                    int targetRgb;
+                                    if (useCustom && colorAlpha > 0.001f) {
+                                        int tr = Math.round(((baseRgb >> 16) & 0xFF)
+                                                + (((fcColor >> 16) & 0xFF) - ((baseRgb >> 16) & 0xFF)) * colorAlpha);
+                                        int tg = Math.round(((baseRgb >> 8) & 0xFF)
+                                                + (((fcColor >> 8) & 0xFF) - ((baseRgb >> 8) & 0xFF)) * colorAlpha);
+                                        int tb = Math.round((baseRgb & 0xFF)
+                                                + ((fcColor & 0xFF) - (baseRgb & 0xFF)) * colorAlpha);
+                                        targetRgb = (tr << 16) | (tg << 8) | tb;
+                                    } else {
+                                        targetRgb = baseRgb;
+                                    }
                                     int r = Math.round(((targetRgb >> 16) & 0xFF) * colorMix);
                                     int g = Math.round(((targetRgb >> 8) & 0xFF) * colorMix);
                                     int b = Math.round((targetRgb & 0xFF) * colorMix);
@@ -2549,11 +2655,24 @@ public final class DynamicIslandHook {
         }
     }
 
+    private static boolean shouldSuppressTopCustomColor(View vrmHost, ConfigStore.HookConfig cfg) {
+        if (vrmHost != null) {
+            View cardRoot = resolveEnclosingCardRoot(vrmHost);
+            View scopeRoot = cardRoot != null ? cardRoot : vrmHost;
+            if (scopeRoot != null && isViewContainingMedia(scopeRoot)) {
+                return true;
+            }
+            return cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud();
+        }
+        return hasActiveTopMediaFluidCloud();
+    }
+
     private static void ensureVrmSynced(Object vrm, ConfigStore.HookConfig cfg) {
         if (vrm == null || Boolean.TRUE.equals(IN_REAPPLY.get())) {
             return;
         }
-        int desiredHash = computeConfigHash(cfg);
+        boolean suppressCustom = shouldSuppressTopCustomColor(VRM_TO_VIEW.get(vrm), cfg);
+        int desiredHash = computeConfigHash(cfg) * 31 + (suppressCustom ? 1 : 0);
         Integer prevHash = LAST_VRM_HASH.get(vrm);
         if (prevHash != null && prevHash == desiredHash) {
             return;
@@ -2615,7 +2734,8 @@ public final class DynamicIslandHook {
     }
 
     private static void syncVrmNow(Object vrm, ConfigStore.HookConfig cfg) {
-        syncVrmNow(vrm, cfg, computeConfigHash(cfg));
+        boolean suppressCustom = shouldSuppressTopCustomColor(VRM_TO_VIEW.get(vrm), cfg);
+        syncVrmNow(vrm, cfg, computeConfigHash(cfg) * 31 + (suppressCustom ? 1 : 0));
     }
 
     private static Object cloneBlurParam(Object vrm, Object sourceParam) {
@@ -2682,7 +2802,10 @@ public final class DynamicIslandHook {
         h = h * 31 + cfg.getFcBlurInt();
         h = h * 31 + cfg.getFcBottomGlowInt();
         h = h * 31 + cfg.getFcBottomGlowChromaInt();
+        h = h * 31 + (cfg.isFcColorEnabled() ? 1 : 0);
         h = h * 31 + cfg.getFcColor();
+        h = h * 31 + (cfg.isFcCustomMaskEnabled() ? 1 : 0);
+        h = h * 31 + cfg.getFcCustomMaskColor();
         h = h * 31 + (cfg.isFcRemoveIslandMask() ? 1 : 0);
         h = h * 31 + (cfg.isFcMaskFollowMedia() ? 1 : 0);
         h = h * 31 + cfg.getFcMaskBrightnessInt();
@@ -2696,7 +2819,9 @@ public final class DynamicIslandHook {
         h = h * 31 + cfg.getFcMaskGradEndInt();
         h = h * 31 + cfg.getFcMaskGradMidInt();
         h = h * 31 + cfg.getFcMaskGradStrengthInt();
-        if (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()) {
+        if (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()
+                || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled()) {
+            h = h * 31 + (sTopMediaFluidCloudActive ? 1 : 0);
             h = h * 31 + sLatestMediaCoverColor;
             h = h * 31 + sLastMediaRawRgb;
         }
@@ -2754,16 +2879,23 @@ public final class DynamicIslandHook {
         }
         View host = resolveDrawableHostView(drawable);
         View cardRoot = resolveEnclosingCardRoot(host);
-        boolean isMedia = cardRoot != null && hasMediaBgViewInTree(cardRoot);
+        boolean isMedia = cardRoot != null && isViewContainingMedia(cardRoot);
         boolean wantMediaTint = isMedia
                 ? cfg.isFcMaskFollowMedia()
                 : cfg.isFcNonMediaMaskEnabled();
-        int maskRgb = wantMediaTint ? resolveMediaRawToMaskRgb(cardRoot, isMedia, cfg) : 0;
-        boolean hasMaskTint = wantMediaTint && maskRgb != 0;
+        int mediaMaskRgb = wantMediaTint ? resolveMediaRawToMaskRgb(cardRoot, isMedia, cfg) : 0;
+        boolean hasMediaMaskTint = wantMediaTint && mediaMaskRgb != 0;
+        boolean suppressCustom = isMedia
+                || (cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud());
+        boolean hasCustomMask = !hasMediaMaskTint && !suppressCustom && cfg.isFcCustomMaskEnabled();
+        int customMaskArgb = hasCustomMask ? cfg.getFcCustomMaskColor() : 0;
+        boolean hasMaskTint = hasMediaMaskTint || hasCustomMask;
+        int maskRgb = hasMediaMaskTint ? mediaMaskRgb : (hasCustomMask ? customMaskArgb : 0);
         float catScale = isMedia
                 ? cfg.getFcMaskStrengthScale()
-                : cfg.getNonMediaMaskOpacityScaleForTint(hasMaskTint);
-        float maskScale = catScale * cfg.getFcMaskGradStrengthScale();
+                : cfg.getNonMediaMaskOpacityScaleForTint(hasMediaMaskTint);
+        float customAlphaScale = hasCustomMask ? ConfigStore.colorAlphaScale(customMaskArgb) : 1.0f;
+        float maskScale = catScale * cfg.getFcMaskGradStrengthScale() * customAlphaScale;
 
         GradReflection ref = inspectGradientDrawable(drawable.getClass());
         if (ref == null) {
@@ -2790,7 +2922,7 @@ public final class DynamicIslandHook {
 
         long fastKey = computeGradFastKey(drawable, cfg);
         int hash = computeConfigHash(cfg);
-        hash = hash * 31 + (hasMaskTint ? 1 : 0);
+        hash = hash * 31 + ((hasMediaMaskTint ? 1 : 0) | (hasCustomMask ? 2 : 0));
         hash = hash * 31 + maskRgb;
         hash = hash * 31 + Float.floatToIntBits(maskScale);
         hash = hash * 31 + bw;
@@ -3054,18 +3186,21 @@ public final class DynamicIslandHook {
                 ? orig[1] : new float[]{0.149f, 0.149f, 0.149f, 0.702f};
 
         float op = cfg.getFcIslandOpacity();
-        int fcColor = cfg.getFcColor();
-        float r = fcColor != 0 ? (((fcColor >> 16) & 0xFF) / 255.0f) : 0.0f;
-        float g = fcColor != 0 ? (((fcColor >> 8) & 0xFF) / 255.0f) : 0.0f;
-        float b = fcColor != 0 ? ((fcColor & 0xFF) / 255.0f) : 0.0f;
+        boolean useCustom = cfg.isFcColorEnabled()
+                && !shouldSuppressTopCustomColor(VRM_TO_VIEW.get(vrm), cfg);
+        int fcColor = useCustom ? cfg.getFcColor() : 0;
+        float colorAlpha = useCustom ? ConfigStore.colorAlphaScale(fcColor) : 0.0f;
+        float r = useCustom ? (((fcColor >> 16) & 0xFF) / 255.0f) : 0.0f;
+        float g = useCustom ? (((fcColor >> 8) & 0xFF) / 255.0f) : 0.0f;
+        float b = useCustom ? ((fcColor & 0xFF) / 255.0f) : 0.0f;
 
-        if (fcColor == 0 && cfg.getFcIslandOpacityInt() >= 100 && !cfg.isFcRemoveIslandMask()) {
+        if (!useCustom && cfg.getFcIslandOpacityInt() >= 100 && !cfg.isFcRemoveIslandMask()) {
             System.arraycopy(origMix, 0, mix, 0, 4);
-        } else if (fcColor != 0) {
+        } else if (useCustom) {
             mix[0] = r;
             mix[1] = g;
             mix[2] = b;
-            mix[3] = clamp01(0.74f * op);
+            mix[3] = clamp01(0.74f * op * colorAlpha);
         } else {
             // Preserve clean neutral frosted translucency without ash-grey mix pollution
             mix[0] = 0.10f;
@@ -3075,13 +3210,12 @@ public final class DynamicIslandHook {
         }
 
         // Preserve ColorOS 17 native OplusBlurParam GLOW_OVERLAY highlight pipeline without weakening
-        float baseR = fcColor != 0 ? (0.55f + 0.45f * r) : origBlend[0];
-        float baseG = fcColor != 0 ? (0.55f + 0.45f * g) : origBlend[1];
-        float baseB = fcColor != 0 ? (0.55f + 0.45f * b) : origBlend[2];
-
-        blend[0] = baseR;
-        blend[1] = baseG;
-        blend[2] = baseB;
+        float tintR = 0.55f + 0.45f * r;
+        float tintG = 0.55f + 0.45f * g;
+        float tintB = 0.55f + 0.45f * b;
+        blend[0] = useCustom ? (origBlend[0] + (tintR - origBlend[0]) * colorAlpha) : origBlend[0];
+        blend[1] = useCustom ? (origBlend[1] + (tintG - origBlend[1]) * colorAlpha) : origBlend[1];
+        blend[2] = useCustom ? (origBlend[2] + (tintB - origBlend[2]) * colorAlpha) : origBlend[2];
         blend[3] = origBlend[3];
     }
 
@@ -3112,7 +3246,7 @@ public final class DynamicIslandHook {
             dp = Resources.getSystem().getDisplayMetrics().density;
         } catch (Throwable ignored) {
         }
-        boolean isMediaCard = scopeRoot != null && hasMediaBgViewInTree(scopeRoot);
+        boolean isMediaCard = scopeRoot != null && isViewContainingMedia(scopeRoot);
         boolean isLargeMedia = isLargeMediaCardHeight(isMediaCard, h, dp);
         int boostPct = isLargeMedia ? cfg.getFcBottomGlowInt() : cfg.getFcSingleGlowInt();
         int chromaPct = isLargeMedia ? cfg.getFcBottomGlowChromaInt() : cfg.getFcSingleGlowChromaInt();
@@ -3176,8 +3310,10 @@ public final class DynamicIslandHook {
                     colored = true;
                 }
             }
-            if (!colored && cfg.getFcColor() != 0) {
-                boostHighlightChromaArgb(cfg.getFcColor(), chromaBoost, brightBoost, rgb);
+            if (!colored && !isMediaCard && !(cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud())
+                    && cfg.isFcColorEnabled() && ((cfg.getFcColor() >>> 24) & 0xFF) > 0) {
+                float ca = ConfigStore.colorAlphaScale(cfg.getFcColor());
+                boostHighlightChromaArgb(cfg.getFcColor(), chromaBoost * ca, brightBoost, rgb);
                 colored = true;
             }
 

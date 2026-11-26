@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">Module Active</string>
     <string name="status_title_inactive">Module Inactive</string>
-    <string name="status_sub_active">v1.1.1 (1101) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.2 (1102) · com.android.systemui</string>
     <string name="status_sub_inactive">Enable System UI in LSPosed and reboot</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.1.1</string>
+    <string name="chip_version">v1.1.2</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -130,12 +130,14 @@
     <string name="summary_fc_masks_removed_fmt" formatted="false">%d masks removed</string>
     <string name="summary_fc_masks_stock">System default</string>
 
-    <string name="sub_fc_tint">Card Color</string>
+    <string name="sub_fc_tint">Custom Colors</string>
     <string name="pref_fc_follow_stock_title">Use Default Card Color</string>
     <string name="pref_fc_follow_stock_summary">Keep stock color, only adjust opacity and blur</string>
     <string name="pref_fc_color_title">Custom Card Color</string>
     <string name="pref_fc_color_summary">Pick a color or enter HEX code</string>
-    <string name="pref_fc_custom_color_summary">Follow system default color when off</string>
+    <string name="pref_fc_custom_color_summary">Non-media only; yields to media</string>
+    <string name="pref_fc_custom_mask_color_title">Custom Gradient Mask Color</string>
+    <string name="pref_fc_custom_mask_color_summary">Non-media masks; yields to media</string>
     <string name="label_stock_tint">Default</string>
     <string name="label_color_value">Color Value</string>
     <string name="dialog_hex_input_hint">Enter 6-digit HEX code (e.g. 4FC3F7)</string>
@@ -194,6 +196,8 @@
     <string name="btn_update_open_repo">Open Repo</string>
     <string name="dialog_changelog_title">Changelog</string>
     <string name="btn_close">Close</string>
+    <string name="changelog_v112_title">v1.1.2</string>
+    <string name="changelog_v112_body" formatted="false">• Scoped custom colors to non-media cards only; media cards (and non-media cards with Follow Media enabled while media is active) yield to album art without tint clashes\n• Added an independent Custom Gradient Mask Color picker alongside Custom Card Color, with ARGB opacity sliders for both\n• Automatically opens release notes on first launch after updating to a new version</string>
     <string name="changelog_v111_title">v1.1.1</string>
     <string name="changelog_v111_body" formatted="false">• Fixed bottom-left and bottom-right highlight corners misaligning when bottom glow is enabled and non-media mask opacity is 0\n• Aligned lockscreen/shade mask gradients and bottom highlights with native G2 smooth corners and horizontal swipe offset\n• Added new ColorOS 17 UI with an option to switch back to Classic UI\n• Refactored Appearance settings into secondary subpages with a collapsible inline color picker</string>
     <string name="changelog_v110_title">v1.1.0</string>

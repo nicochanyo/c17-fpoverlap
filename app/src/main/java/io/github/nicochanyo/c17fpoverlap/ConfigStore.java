@@ -44,8 +44,12 @@ public final class ConfigStore {
     public static final String KEY_FC_BOTTOM_GLOW_CHROMA = "fc_bottom_glow_chroma";
     public static final String KEY_FC_SINGLE_GLOW_BOOST = "fc_single_glow_boost";
     public static final String KEY_FC_SINGLE_GLOW_CHROMA = "fc_single_glow_chroma";
+    public static final String KEY_FC_COLOR_ENABLED = "fc_color_enabled";
     public static final String KEY_FC_COLOR = "fc_color";
     public static final String KEY_FC_LAST_COLOR = "fc_last_color";
+    public static final String KEY_FC_CUSTOM_MASK_ENABLED = "fc_custom_mask_enabled";
+    public static final String KEY_FC_CUSTOM_MASK_COLOR = "fc_custom_mask_color";
+    public static final String KEY_FC_CUSTOM_MASK_LAST_COLOR = "fc_custom_mask_last_color";
     public static final String KEY_FC_MATCH_CARD = "fc_match_card";
     public static final String KEY_FC_REMOVE_ISLAND_MASK = "fc_remove_island_mask";
     public static final String KEY_FC_REMOVE_SHADE_MASK = "fc_remove_shade_mask";
@@ -70,6 +74,7 @@ public final class ConfigStore {
     public static final String KEY_APP_MONET = "app_monet";
     public static final String KEY_APP_DARK_MODE = "app_dark_mode";
     public static final String KEY_APP_UI_STYLE = "app_ui_style";
+    public static final String KEY_APP_LAST_SEEN_VERSION_CODE = "app_last_seen_version_code";
     public static final int UI_STYLE_CLASSIC = 0;
     public static final int UI_STYLE_LIVING_FLOW = 1;
     public static final int DARK_MODE_SYSTEM = 0;
@@ -108,6 +113,7 @@ public final class ConfigStore {
     public static final int SMOOTH_GRAD_SAMPLES = 16;
     public static final int DEF_NON_MEDIA_MASK_COLOR = 0xFF4FC3F7;
     public static final int DEF_FC_COLOR = 0;
+    public static final int DEF_FC_CUSTOM_MASK_COLOR = 0;
     public static final int DEF_CUSTOM_COLOR = 0xFF4FC3F7;
 
     private static final int LOG_LIMIT = 160;
@@ -133,8 +139,13 @@ public final class ConfigStore {
         public int fcBottomGlowChroma;
         public int fcSingleGlow;
         public int fcSingleGlowChroma;
+        public boolean fcColorEnabled;
         public int fcColor;
         public int fcLastColor;
+        public boolean fcCustomMaskEnabled;
+        public int fcCustomMaskColor;
+        public int fcCustomMaskLastColor;
+        public boolean fcCustomMaskHasLast;
         public boolean fcMatchCard;
         public boolean fcRemoveIslandMask;
         public boolean fcRemoveShadeMask;
@@ -171,8 +182,13 @@ public final class ConfigStore {
             s.fcBottomGlowChroma = fcBottomGlowChroma;
             s.fcSingleGlow = fcSingleGlow;
             s.fcSingleGlowChroma = fcSingleGlowChroma;
+            s.fcColorEnabled = fcColorEnabled;
             s.fcColor = fcColor;
             s.fcLastColor = fcLastColor;
+            s.fcCustomMaskEnabled = fcCustomMaskEnabled;
+            s.fcCustomMaskColor = fcCustomMaskColor;
+            s.fcCustomMaskLastColor = fcCustomMaskLastColor;
+            s.fcCustomMaskHasLast = fcCustomMaskHasLast;
             s.fcMatchCard = fcMatchCard;
             s.fcRemoveIslandMask = fcRemoveIslandMask;
             s.fcRemoveShadeMask = fcRemoveShadeMask;
@@ -352,6 +368,10 @@ public final class ConfigStore {
             return MAX_FC_BOTTOM_GLOW_CHROMA;
         }
         return value;
+    }
+
+    public static float colorAlphaScale(int argb) {
+        return ((argb >>> 24) & 0xFF) / 255.0f;
     }
 
     public static int normalizeColor(int raw) {
@@ -671,6 +691,26 @@ public final class ConfigStore {
         return getAppUiStyle(ctx) == UI_STYLE_LIVING_FLOW;
     }
 
+    public static int getLastSeenVersionCode(Context ctx) {
+        if (ctx == null) {
+            return 0;
+        }
+        try {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            return Math.max(0, prefs.getInt(KEY_APP_LAST_SEEN_VERSION_CODE, 0));
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    public static void setLastSeenVersionCode(Context ctx, int versionCode) {
+        if (ctx == null) {
+            return;
+        }
+        SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit().putInt(KEY_APP_LAST_SEEN_VERSION_CODE, Math.max(0, versionCode)).commit();
+    }
+
     public static boolean isDarkThemeActive(Context ctx) {
         int mode = getAppDarkMode(ctx);
         if (mode == DARK_MODE_DARK) {
@@ -706,20 +746,23 @@ public final class ConfigStore {
         public final SharedPreferences prefs;
         public final boolean xspActive;
         public final boolean hadLocalKeys;
+        public final boolean hadPriorPrefs;
 
-        AppPrefs(SharedPreferences prefs, boolean xspActive, boolean hadLocalKeys) {
+        AppPrefs(SharedPreferences prefs, boolean xspActive, boolean hadLocalKeys, boolean hadPriorPrefs) {
             this.prefs = prefs;
             this.xspActive = xspActive;
             this.hadLocalKeys = hadLocalKeys;
+            this.hadPriorPrefs = hadPriorPrefs;
         }
     }
 
     public static AppPrefs openAppPrefs(Context ctx) {
         SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean hadPriorPrefs = !prefs.getAll().isEmpty();
         migrateFluidCloudSettings(ctx, prefs);
         boolean hadLocal = hasAnySetting(prefs);
         boolean serviceActive = XposedProvider.isConnected();
-        return new AppPrefs(prefs, serviceActive, hadLocal);
+        return new AppPrefs(prefs, serviceActive, hadLocal, hadPriorPrefs);
     }
 
     public static boolean hasAnySetting(SharedPreferences prefs) {
@@ -814,9 +857,32 @@ public final class ConfigStore {
         s.fcSingleGlowChroma = prefs.contains(KEY_FC_SINGLE_GLOW_CHROMA)
                 ? clampBottomGlowChroma(prefs.getInt(KEY_FC_SINGLE_GLOW_CHROMA, DEF_FC_BOTTOM_GLOW_CHROMA))
                 : s.fcBottomGlowChroma;
-        s.fcColor = normalizeColor(prefs.getInt(KEY_FC_COLOR, DEF_FC_COLOR));
-        int last = normalizeColor(prefs.getInt(KEY_FC_LAST_COLOR, DEF_CUSTOM_COLOR));
-        s.fcLastColor = last != 0 ? last : DEF_CUSTOM_COLOR;
+        int rawFcColor = prefs.getInt(KEY_FC_COLOR, DEF_FC_COLOR);
+        boolean hasColorEnKey = prefs.contains(KEY_FC_COLOR_ENABLED);
+        s.fcColorEnabled = hasColorEnKey
+                ? prefs.getBoolean(KEY_FC_COLOR_ENABLED, false)
+                : (rawFcColor != 0);
+        s.fcColor = s.fcColorEnabled
+                ? (hasColorEnKey ? rawFcColor : normalizeColor(rawFcColor))
+                : 0;
+        int rawLastColor = prefs.getInt(KEY_FC_LAST_COLOR, DEF_CUSTOM_COLOR);
+        s.fcLastColor = hasColorEnKey
+                ? rawLastColor
+                : (normalizeColor(rawLastColor) != 0 ? normalizeColor(rawLastColor) : DEF_CUSTOM_COLOR);
+
+        int rawCustomMask = prefs.getInt(KEY_FC_CUSTOM_MASK_COLOR, DEF_FC_CUSTOM_MASK_COLOR);
+        boolean hasCustomMaskEnKey = prefs.contains(KEY_FC_CUSTOM_MASK_ENABLED);
+        s.fcCustomMaskEnabled = hasCustomMaskEnKey
+                ? prefs.getBoolean(KEY_FC_CUSTOM_MASK_ENABLED, false)
+                : (rawCustomMask != 0);
+        s.fcCustomMaskColor = s.fcCustomMaskEnabled
+                ? (hasCustomMaskEnKey ? rawCustomMask : normalizeColor(rawCustomMask))
+                : 0;
+        int rawLastMask = prefs.getInt(KEY_FC_CUSTOM_MASK_LAST_COLOR, 0);
+        s.fcCustomMaskHasLast = s.fcCustomMaskEnabled
+                || (hasCustomMaskEnKey && prefs.contains(KEY_FC_CUSTOM_MASK_LAST_COLOR))
+                || rawLastMask != 0;
+        s.fcCustomMaskLastColor = hasCustomMaskEnKey ? rawLastMask : normalizeColor(rawLastMask);
         s.fcMatchCard = prefs.getBoolean(KEY_FC_MATCH_CARD, true);
         s.fcRemoveIslandMask = prefs.contains(KEY_FC_REMOVE_ISLAND_MASK)
                 ? prefs.getBoolean(KEY_FC_REMOVE_ISLAND_MASK, true)
@@ -868,8 +934,13 @@ public final class ConfigStore {
         s.fcBottomGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
         s.fcSingleGlow = DEF_FC_BOTTOM_GLOW;
         s.fcSingleGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
+        s.fcColorEnabled = false;
         s.fcColor = DEF_FC_COLOR;
         s.fcLastColor = DEF_CUSTOM_COLOR;
+        s.fcCustomMaskEnabled = false;
+        s.fcCustomMaskColor = DEF_FC_CUSTOM_MASK_COLOR;
+        s.fcCustomMaskLastColor = 0;
+        s.fcCustomMaskHasLast = false;
         s.fcMatchCard = true;
         s.fcRemoveIslandMask = true;
         s.fcRemoveShadeMask = false;
@@ -917,9 +988,32 @@ public final class ConfigStore {
         s.fcSingleGlowChroma = map.containsKey(KEY_FC_SINGLE_GLOW_CHROMA)
                 ? clampBottomGlowChroma(readMapInt(map, KEY_FC_SINGLE_GLOW_CHROMA, DEF_FC_BOTTOM_GLOW_CHROMA))
                 : s.fcBottomGlowChroma;
-        s.fcColor = normalizeColor(readMapInt(map, KEY_FC_COLOR, DEF_FC_COLOR));
-        int last = normalizeColor(readMapInt(map, KEY_FC_LAST_COLOR, DEF_CUSTOM_COLOR));
-        s.fcLastColor = last != 0 ? last : DEF_CUSTOM_COLOR;
+        int rawFcColor = readMapInt(map, KEY_FC_COLOR, DEF_FC_COLOR);
+        boolean hasColorEnKey = map.containsKey(KEY_FC_COLOR_ENABLED);
+        s.fcColorEnabled = hasColorEnKey
+                ? readMapBool(map, KEY_FC_COLOR_ENABLED, false)
+                : (rawFcColor != 0);
+        s.fcColor = s.fcColorEnabled
+                ? (hasColorEnKey ? rawFcColor : normalizeColor(rawFcColor))
+                : 0;
+        int rawLastColor = readMapInt(map, KEY_FC_LAST_COLOR, DEF_CUSTOM_COLOR);
+        s.fcLastColor = hasColorEnKey
+                ? rawLastColor
+                : (normalizeColor(rawLastColor) != 0 ? normalizeColor(rawLastColor) : DEF_CUSTOM_COLOR);
+
+        int rawCustomMask = readMapInt(map, KEY_FC_CUSTOM_MASK_COLOR, DEF_FC_CUSTOM_MASK_COLOR);
+        boolean hasCustomMaskEnKey = map.containsKey(KEY_FC_CUSTOM_MASK_ENABLED);
+        s.fcCustomMaskEnabled = hasCustomMaskEnKey
+                ? readMapBool(map, KEY_FC_CUSTOM_MASK_ENABLED, false)
+                : (rawCustomMask != 0);
+        s.fcCustomMaskColor = s.fcCustomMaskEnabled
+                ? (hasCustomMaskEnKey ? rawCustomMask : normalizeColor(rawCustomMask))
+                : 0;
+        int rawLastMask = readMapInt(map, KEY_FC_CUSTOM_MASK_LAST_COLOR, 0);
+        s.fcCustomMaskHasLast = s.fcCustomMaskEnabled
+                || (hasCustomMaskEnKey && map.containsKey(KEY_FC_CUSTOM_MASK_LAST_COLOR))
+                || rawLastMask != 0;
+        s.fcCustomMaskLastColor = hasCustomMaskEnKey ? rawLastMask : normalizeColor(rawLastMask);
         s.fcMatchCard = readMapBool(map, KEY_FC_MATCH_CARD, true);
         s.fcRemoveIslandMask = map.containsKey(KEY_FC_REMOVE_ISLAND_MASK)
                 ? readMapBool(map, KEY_FC_REMOVE_ISLAND_MASK, true)
@@ -972,8 +1066,15 @@ public final class ConfigStore {
         map.put(KEY_FC_BOTTOM_GLOW_CHROMA, clampBottomGlowChroma(s.fcBottomGlowChroma));
         map.put(KEY_FC_SINGLE_GLOW_BOOST, clampBottomGlow(s.fcSingleGlow));
         map.put(KEY_FC_SINGLE_GLOW_CHROMA, clampBottomGlowChroma(s.fcSingleGlowChroma));
-        map.put(KEY_FC_COLOR, normalizeColor(s.fcColor));
-        map.put(KEY_FC_LAST_COLOR, normalizeColor(s.fcLastColor) != 0 ? normalizeColor(s.fcLastColor) : DEF_CUSTOM_COLOR);
+        map.put(KEY_FC_COLOR_ENABLED, s.fcColorEnabled);
+        map.put(KEY_FC_COLOR, s.fcColorEnabled ? s.fcColor : 0);
+        map.put(KEY_FC_LAST_COLOR, s.fcColorEnabled ? s.fcColor : s.fcLastColor);
+        map.put(KEY_FC_CUSTOM_MASK_ENABLED, s.fcCustomMaskEnabled);
+        map.put(KEY_FC_CUSTOM_MASK_COLOR, s.fcCustomMaskEnabled ? s.fcCustomMaskColor : 0);
+        if (s.fcCustomMaskEnabled || s.fcCustomMaskHasLast) {
+            map.put(KEY_FC_CUSTOM_MASK_LAST_COLOR,
+                    s.fcCustomMaskEnabled ? s.fcCustomMaskColor : s.fcCustomMaskLastColor);
+        }
         map.put(KEY_FC_MATCH_CARD, s.fcMatchCard);
         map.put(KEY_FC_REMOVE_ISLAND_MASK, s.fcRemoveIslandMask);
         map.put(KEY_FC_REMOVE_SHADE_MASK, s.fcRemoveShadeMask);
@@ -1040,9 +1141,16 @@ public final class ConfigStore {
         s.fcMaskBrightness = clampMaskPercent(s.fcMaskBrightness);
         s.fcMaskChroma = clampMaskPercent(s.fcMaskChroma);
         s.fcMaskStrength = clampMaskStrength(s.fcMaskStrength);
-        s.fcColor = normalizeColor(s.fcColor);
-        if (s.fcColor != 0) {
+        if (s.fcColorEnabled) {
             s.fcLastColor = s.fcColor;
+        } else {
+            s.fcColor = 0;
+        }
+        if (s.fcCustomMaskEnabled) {
+            s.fcCustomMaskLastColor = s.fcCustomMaskColor;
+            s.fcCustomMaskHasLast = true;
+        } else {
+            s.fcCustomMaskColor = 0;
         }
         s.fcNonMediaMaskColor = normalizePickerColor(s.fcNonMediaMaskColor);
         s.fcNonMediaMaskLastColor = s.fcNonMediaMaskColor;
@@ -1055,7 +1163,7 @@ public final class ConfigStore {
         s.fcMaskGradStrength = clampMaskStrength(s.fcMaskGradStrength);
         s.fcVer = s.fcVer + 1;
 
-        prefs.edit()
+        SharedPreferences.Editor ed = prefs.edit()
                 .putBoolean(KEY_ALIGN, s.align)
                 .putInt(KEY_OFFSET, s.offset)
                 .putBoolean(KEY_IMMERSIVE_FP, s.immersiveFp)
@@ -1071,8 +1179,11 @@ public final class ConfigStore {
                 .putInt(KEY_FC_BOTTOM_GLOW_CHROMA, s.fcBottomGlowChroma)
                 .putInt(KEY_FC_SINGLE_GLOW_BOOST, s.fcSingleGlow)
                 .putInt(KEY_FC_SINGLE_GLOW_CHROMA, s.fcSingleGlowChroma)
+                .putBoolean(KEY_FC_COLOR_ENABLED, s.fcColorEnabled)
                 .putInt(KEY_FC_COLOR, s.fcColor)
                 .putInt(KEY_FC_LAST_COLOR, s.fcLastColor)
+                .putBoolean(KEY_FC_CUSTOM_MASK_ENABLED, s.fcCustomMaskEnabled)
+                .putInt(KEY_FC_CUSTOM_MASK_COLOR, s.fcCustomMaskColor)
                 .putBoolean(KEY_FC_MATCH_CARD, s.fcMatchCard)
                 .putBoolean(KEY_FC_REMOVE_ISLAND_MASK, s.fcRemoveIslandMask)
                 .putBoolean(KEY_FC_REMOVE_SHADE_MASK, s.fcRemoveShadeMask)
@@ -1091,8 +1202,13 @@ public final class ConfigStore {
                 .putInt(KEY_FC_MASK_GRAD_STRENGTH, s.fcMaskGradStrength)
                 .putBoolean(KEY_FC_DEBUG_MODE, s.fcDebugMode)
                 .putInt(KEY_FC_VER, s.fcVer)
-                .putBoolean(KEY_FC_MIGRATED, true)
-                .apply();
+                .putBoolean(KEY_FC_MIGRATED, true);
+        if (s.fcCustomMaskEnabled || s.fcCustomMaskHasLast) {
+            ed.putInt(KEY_FC_CUSTOM_MASK_LAST_COLOR, s.fcCustomMaskLastColor);
+        } else {
+            ed.remove(KEY_FC_CUSTOM_MASK_LAST_COLOR);
+        }
+        ed.apply();
     }
 
     public static boolean pushRemote(SettingsData s) {
@@ -1129,7 +1245,10 @@ public final class ConfigStore {
         private volatile int fcBottomGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
         private volatile int fcSingleGlow = DEF_FC_BOTTOM_GLOW;
         private volatile int fcSingleGlowChroma = DEF_FC_BOTTOM_GLOW_CHROMA;
+        private volatile boolean fcColorEnabled = false;
         private volatile int fcColor = DEF_FC_COLOR;
+        private volatile boolean fcCustomMaskEnabled = false;
+        private volatile int fcCustomMaskColor = DEF_FC_CUSTOM_MASK_COLOR;
         private volatile boolean fcMatchCard = true;
         private volatile boolean fcRemoveIslandMask = true;
         private volatile boolean fcRemoveShadeMask = false;
@@ -1167,7 +1286,10 @@ public final class ConfigStore {
         private int lastLoggedFcBottomGlowChroma;
         private int lastLoggedFcSingleGlow;
         private int lastLoggedFcSingleGlowChroma;
+        private boolean lastLoggedFcColorEnabled;
         private int lastLoggedFcColor;
+        private boolean lastLoggedFcCustomMaskEnabled;
+        private int lastLoggedFcCustomMaskColor;
         private boolean lastLoggedFcMatchCard;
         private boolean lastLoggedFcRemoveIslandMask;
         private boolean lastLoggedFcRemoveShadeMask;
@@ -1205,7 +1327,10 @@ public final class ConfigStore {
                     + " glowChroma=" + fcBottomGlowChroma
                     + " singleGlow=" + fcSingleGlow
                     + " singleGlowChroma=" + fcSingleGlowChroma
+                    + " colorEn=" + fcColorEnabled
                     + " color=0x" + Integer.toHexString(fcColor)
+                    + " customMaskEn=" + fcCustomMaskEnabled
+                    + " customMask=0x" + Integer.toHexString(fcCustomMaskColor)
                     + " match=" + fcMatchCard
                     + " islandMask=" + fcRemoveIslandMask
                     + " shadeMask=" + fcRemoveShadeMask
@@ -1341,9 +1466,24 @@ public final class ConfigStore {
             return Math.max(0.0f, Math.min(1.0f, fcSingleGlowChroma / (float) MAX_FC_BOTTOM_GLOW_CHROMA));
         }
 
+        public boolean isFcColorEnabled() {
+            reload(false);
+            return fcColorEnabled;
+        }
+
         public int getFcColor() {
             reload(false);
             return fcColor;
+        }
+
+        public boolean isFcCustomMaskEnabled() {
+            reload(false);
+            return fcCustomMaskEnabled;
+        }
+
+        public int getFcCustomMaskColor() {
+            reload(false);
+            return fcCustomMaskColor;
         }
 
         public boolean isFcMatchCard() {
@@ -1471,7 +1611,7 @@ public final class ConfigStore {
 
         public boolean isFcLockTintOrMaskModified() {
             reload(false);
-            return fcColor != 0 || fcOpacity < 100 || fcMatchCard
+            return fcColorEnabled || fcCustomMaskEnabled || fcOpacity < 100 || fcMatchCard
                     || fcMaskFollowMedia || fcNonMediaMaskEnabled
                     || fcMaskStrength != DEF_FC_MASK_STRENGTH
                     || fcNonMediaMaskOpacity != DEF_FC_NON_MEDIA_MASK_OPACITY
@@ -1481,7 +1621,7 @@ public final class ConfigStore {
 
         public boolean isFcStockAppearance() {
             reload(false);
-            return fcColor == 0 && fcOpacity >= 100 && !fcMatchCard
+            return !fcColorEnabled && !fcCustomMaskEnabled && fcOpacity >= 100 && !fcMatchCard
                     && fcBottomGlow == DEF_FC_BOTTOM_GLOW
                     && fcBottomGlowChroma == DEF_FC_BOTTOM_GLOW_CHROMA
                     && fcSingleGlow == DEF_FC_BOTTOM_GLOW
@@ -1490,7 +1630,7 @@ public final class ConfigStore {
 
         public boolean isFcIslandStockAppearance() {
             reload(false);
-            return fcColor == 0 && fcIslandOpacity >= 100 && !fcRemoveIslandMask
+            return !fcColorEnabled && fcIslandOpacity >= 100 && !fcRemoveIslandMask
                     && fcBottomGlow == DEF_FC_BOTTOM_GLOW
                     && fcBottomGlowChroma == DEF_FC_BOTTOM_GLOW_CHROMA
                     && fcSingleGlow == DEF_FC_BOTTOM_GLOW
@@ -1579,7 +1719,22 @@ public final class ConfigStore {
                         ? clampBottomGlowChroma(
                                 remotePrefs.getInt(KEY_FC_SINGLE_GLOW_CHROMA, DEF_FC_BOTTOM_GLOW_CHROMA))
                         : fcBottomGlowChroma;
-                fcColor = normalizeColor(remotePrefs.getInt(KEY_FC_COLOR, DEF_FC_COLOR));
+                int rawFcColor = remotePrefs.getInt(KEY_FC_COLOR, DEF_FC_COLOR);
+                boolean hasColorEnKey = remotePrefs.contains(KEY_FC_COLOR_ENABLED);
+                fcColorEnabled = hasColorEnKey
+                        ? remotePrefs.getBoolean(KEY_FC_COLOR_ENABLED, false)
+                        : (rawFcColor != 0);
+                fcColor = fcColorEnabled
+                        ? (hasColorEnKey ? rawFcColor : normalizeColor(rawFcColor))
+                        : 0;
+                int rawCustomMask = remotePrefs.getInt(KEY_FC_CUSTOM_MASK_COLOR, DEF_FC_CUSTOM_MASK_COLOR);
+                boolean hasCustomMaskEnKey = remotePrefs.contains(KEY_FC_CUSTOM_MASK_ENABLED);
+                fcCustomMaskEnabled = hasCustomMaskEnKey
+                        ? remotePrefs.getBoolean(KEY_FC_CUSTOM_MASK_ENABLED, false)
+                        : (rawCustomMask != 0);
+                fcCustomMaskColor = fcCustomMaskEnabled
+                        ? (hasCustomMaskEnKey ? rawCustomMask : normalizeColor(rawCustomMask))
+                        : 0;
                 fcMatchCard = remotePrefs.getBoolean(KEY_FC_MATCH_CARD, true);
                 fcRemoveIslandMask = remotePrefs.contains(KEY_FC_REMOVE_ISLAND_MASK)
                         ? remotePrefs.getBoolean(KEY_FC_REMOVE_ISLAND_MASK, true)
@@ -1641,7 +1796,10 @@ public final class ConfigStore {
                     && fcBottomGlowChroma == lastLoggedFcBottomGlowChroma
                     && fcSingleGlow == lastLoggedFcSingleGlow
                     && fcSingleGlowChroma == lastLoggedFcSingleGlowChroma
+                    && fcColorEnabled == lastLoggedFcColorEnabled
                     && fcColor == lastLoggedFcColor
+                    && fcCustomMaskEnabled == lastLoggedFcCustomMaskEnabled
+                    && fcCustomMaskColor == lastLoggedFcCustomMaskColor
                     && fcMatchCard == lastLoggedFcMatchCard
                     && fcRemoveIslandMask == lastLoggedFcRemoveIslandMask
                     && fcRemoveShadeMask == lastLoggedFcRemoveShadeMask
@@ -1675,7 +1833,10 @@ public final class ConfigStore {
                     + " glowChroma=" + fcBottomGlowChroma
                     + " singleGlow=" + fcSingleGlow
                     + " singleGlowChroma=" + fcSingleGlowChroma
+                    + " colorEn=" + fcColorEnabled
                     + " color=0x" + Integer.toHexString(fcColor)
+                    + " customMaskEn=" + fcCustomMaskEnabled
+                    + " customMask=0x" + Integer.toHexString(fcCustomMaskColor)
                     + " match=" + fcMatchCard
                     + " islandMask=" + fcRemoveIslandMask
                     + " shadeMask=" + fcRemoveShadeMask
@@ -1705,7 +1866,10 @@ public final class ConfigStore {
             lastLoggedFcBottomGlowChroma = fcBottomGlowChroma;
             lastLoggedFcSingleGlow = fcSingleGlow;
             lastLoggedFcSingleGlowChroma = fcSingleGlowChroma;
+            lastLoggedFcColorEnabled = fcColorEnabled;
             lastLoggedFcColor = fcColor;
+            lastLoggedFcCustomMaskEnabled = fcCustomMaskEnabled;
+            lastLoggedFcCustomMaskColor = fcCustomMaskColor;
             lastLoggedFcMatchCard = fcMatchCard;
             lastLoggedFcRemoveIslandMask = fcRemoveIslandMask;
             lastLoggedFcRemoveShadeMask = fcRemoveShadeMask;

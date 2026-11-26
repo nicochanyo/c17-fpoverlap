@@ -88,6 +88,7 @@ public class MainActivity extends Activity {
     private static final String STATE_TAB = "active_tab";
     private static final String STATE_FC_SUBPAGE = "open_fc_subpage";
     private static final String STATE_FC_TINT_EXPANDED = "fc_tint_expanded";
+    private static final String STATE_FC_MASK_TINT_EXPANDED = "fc_mask_tint_expanded";
     private static final String COOLAPK_DEEP_PREFIX = "coolmarket://u/";
     private static final String COOLAPK_WEB_PREFIX = "https://www.coolapk.com/u/";
     private static final String LSPOSED_REPO_JSON_URL = "https://modules.lsposed.org/module/io.github.nicochanyo.c17fpoverlap.json";
@@ -118,6 +119,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private boolean xspActive;
     private boolean hadLocalKeys;
+    private boolean hadPriorPrefs;
     private boolean remoteRestoreTried;
     private ConfigStore.SettingsData data;
 
@@ -283,6 +285,18 @@ public class MainActivity extends Activity {
     private boolean fcColorPickerUserExpanded;
     private boolean fcColorPickerExpanded;
     private boolean fcColorPickerStateSynced;
+    private TextView tvFcCustomMaskColorSummary;
+    private View layoutFcMaskTintBadge;
+    private View vFcMaskTintSwatchDot;
+    private ImageView ivFcMaskTintChevron;
+    private Switch swFcCustomMaskColor;
+    private View dividerFcMaskTintPicker;
+    private View layoutFcMaskColorPickerWrap;
+    private CouiHsvColorPickerView fcMaskColorPicker;
+    private ValueAnimator fcMaskColorPickerAnimator;
+    private boolean fcMaskColorPickerUserExpanded;
+    private boolean fcMaskColorPickerExpanded;
+    private boolean fcMaskColorPickerStateSynced;
     private TextView tvSummaryOpacityBlur;
     private TextView tvSummaryHighlight;
     private final View[] fcMenuPanels = new View[3];
@@ -347,12 +361,17 @@ public class MainActivity extends Activity {
         prefs = opened.prefs;
         xspActive = opened.xspActive;
         hadLocalKeys = opened.hadLocalKeys;
+        hadPriorPrefs = opened.hadPriorPrefs;
         data = ConfigStore.loadFromPrefs(prefs);
 
         final int restoredSubpage = savedInstanceState != null
                 ? savedInstanceState.getInt(STATE_FC_SUBPAGE, -1) : -1;
         fcColorPickerUserExpanded = savedInstanceState != null
                 && savedInstanceState.getBoolean(STATE_FC_TINT_EXPANDED, false);
+        fcMaskColorPickerUserExpanded = savedInstanceState != null
+                && savedInstanceState.getBoolean(STATE_FC_MASK_TINT_EXPANDED, false);
+        final boolean fromThemeRecreate = (sPendingTabAfterRecreate >= TAB_LOCKSCREEN
+                && sPendingTabAfterRecreate <= TAB_ABOUT);
         if (sPendingTabAfterRecreate >= TAB_LOCKSCREEN && sPendingTabAfterRecreate <= TAB_ABOUT) {
             activeTab = sPendingTabAfterRecreate;
             sPendingTabAfterRecreate = -1;
@@ -387,6 +406,7 @@ public class MainActivity extends Activity {
             }
         });
         syncRemoteAsync();
+        maybeShowPostUpdateChangelog(savedInstanceState, fromThemeRecreate);
     }
 
     @SuppressWarnings("deprecation")
@@ -425,6 +445,7 @@ public class MainActivity extends Activity {
         outState.putInt(STATE_TAB, activeTab);
         outState.putInt(STATE_FC_SUBPAGE, openFcMenuIndex);
         outState.putBoolean(STATE_FC_TINT_EXPANDED, fcColorPickerUserExpanded);
+        outState.putBoolean(STATE_FC_MASK_TINT_EXPANDED, fcMaskColorPickerUserExpanded);
     }
 
     @Override
@@ -496,6 +517,13 @@ public class MainActivity extends Activity {
         }
         if (dividerFcTintPicker != null) {
             dividerFcTintPicker.animate().cancel();
+        }
+        if (fcMaskColorPickerAnimator != null) {
+            fcMaskColorPickerAnimator.cancel();
+            fcMaskColorPickerAnimator = null;
+        }
+        if (dividerFcMaskTintPicker != null) {
+            dividerFcMaskTintPicker.animate().cancel();
         }
         if (navPillMorphAnimator != null) {
             navPillMorphAnimator.cancel();
@@ -1668,6 +1696,14 @@ public class MainActivity extends Activity {
         dividerFcTintPicker = findViewById(R.id.dividerFcTintPicker);
         layoutFcColorPickerWrap = findViewById(R.id.layoutFcColorPickerWrap);
         fcColorPicker = findViewById(R.id.fcColorPicker);
+        tvFcCustomMaskColorSummary = findViewById(R.id.tvFcCustomMaskColorSummary);
+        layoutFcMaskTintBadge = findViewById(R.id.layoutFcMaskTintBadge);
+        vFcMaskTintSwatchDot = findViewById(R.id.vFcMaskTintSwatchDot);
+        ivFcMaskTintChevron = findViewById(R.id.ivFcMaskTintChevron);
+        swFcCustomMaskColor = findViewById(R.id.swFcCustomMaskColor);
+        dividerFcMaskTintPicker = findViewById(R.id.dividerFcMaskTintPicker);
+        layoutFcMaskColorPickerWrap = findViewById(R.id.layoutFcMaskColorPickerWrap);
+        fcMaskColorPicker = findViewById(R.id.fcMaskColorPicker);
 
         tvSummaryOpacityBlur = findViewById(R.id.tvSummaryOpacityBlur);
         tvSummaryHighlight = findViewById(R.id.tvSummaryHighlight);
@@ -2231,7 +2267,7 @@ public class MainActivity extends Activity {
                 if (!data.fcEnabled) {
                     return;
                 }
-                if (data.fcColor == 0) {
+                if (!data.fcColorEnabled) {
                     fcColorPickerUserExpanded = true;
                     swFcCustomColor.setChecked(true);
                 } else {
@@ -2254,12 +2290,13 @@ public class MainActivity extends Activity {
                     ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
                 }
                 if (isChecked) {
+                    data.fcColorEnabled = true;
                     data.fcColor = data.fcLastColor != 0 ? data.fcLastColor : ConfigStore.DEF_CUSTOM_COLOR;
+                    data.fcLastColor = data.fcColor;
                     fcColorPickerUserExpanded = true;
                 } else {
-                    if (data.fcColor != 0) {
-                        data.fcLastColor = data.fcColor;
-                    }
+                    data.fcLastColor = data.fcColor;
+                    data.fcColorEnabled = false;
                     data.fcColor = 0;
                     fcColorPickerUserExpanded = false;
                 }
@@ -2268,18 +2305,92 @@ public class MainActivity extends Activity {
         });
 
         if (fcColorPicker != null) {
-            fcColorPicker.setShowAlpha(false);
+            fcColorPicker.setShowAlpha(true);
             fcColorPicker.setOnColorChangeListener(new CouiHsvColorPickerView.OnColorChangeListener() {
                 @Override
                 public void onColorChanged(int argbColor, boolean fromUser) {
                     if (!fromUser || suppressUiCallbacks || !data.fcEnabled) {
                         return;
                     }
-                    data.fcColor = ConfigStore.normalizeColor(argbColor);
-                    if (data.fcColor != 0) {
-                        data.fcLastColor = data.fcColor;
-                    }
+                    data.fcColorEnabled = true;
+                    data.fcColor = argbColor;
+                    data.fcLastColor = argbColor;
                     updateFcTintHeaderUi(false);
+                    persistSliderTick();
+                }
+
+                @Override
+                public void onTrackingStopped(int argbColor) {
+                    mainHandler.removeCallbacks(debouncedSync);
+                    syncRemoteAsync();
+                }
+            });
+        }
+
+        findViewById(R.id.rowFcCustomMaskColor).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!data.fcEnabled) {
+                    return;
+                }
+                if (!data.fcCustomMaskEnabled) {
+                    fcMaskColorPickerUserExpanded = true;
+                    swFcCustomMaskColor.setChecked(true);
+                } else {
+                    fcMaskColorPickerUserExpanded = !fcMaskColorPickerUserExpanded;
+                    if (livingFlowUi) {
+                        ColorOsLivingFlowEngine.performHaptic(v, ColorOsLivingFlowEngine.HapticKind.TICK);
+                    }
+                    setFcMaskColorPickerExpanded(fcMaskColorPickerUserExpanded, true);
+                    updateFcMaskTintHeaderUi(true);
+                }
+            }
+        });
+        swFcCustomMaskColor.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
+                if (suppressUiCallbacks) {
+                    return;
+                }
+                if (livingFlowUi) {
+                    ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                }
+                if (isChecked) {
+                    data.fcCustomMaskEnabled = true;
+                    if (data.fcCustomMaskHasLast) {
+                        data.fcCustomMaskColor = data.fcCustomMaskLastColor;
+                    } else if (data.fcColorEnabled) {
+                        data.fcCustomMaskColor = data.fcColor;
+                    } else {
+                        data.fcCustomMaskColor = ConfigStore.DEF_CUSTOM_COLOR;
+                    }
+                    data.fcCustomMaskLastColor = data.fcCustomMaskColor;
+                    data.fcCustomMaskHasLast = true;
+                    fcMaskColorPickerUserExpanded = true;
+                } else {
+                    data.fcCustomMaskLastColor = data.fcCustomMaskColor;
+                    data.fcCustomMaskHasLast = true;
+                    data.fcCustomMaskEnabled = false;
+                    data.fcCustomMaskColor = 0;
+                    fcMaskColorPickerUserExpanded = false;
+                }
+                persistImmediate();
+            }
+        });
+
+        if (fcMaskColorPicker != null) {
+            fcMaskColorPicker.setShowAlpha(true);
+            fcMaskColorPicker.setOnColorChangeListener(new CouiHsvColorPickerView.OnColorChangeListener() {
+                @Override
+                public void onColorChanged(int argbColor, boolean fromUser) {
+                    if (!fromUser || suppressUiCallbacks || !data.fcEnabled) {
+                        return;
+                    }
+                    data.fcCustomMaskEnabled = true;
+                    data.fcCustomMaskColor = argbColor;
+                    data.fcCustomMaskLastColor = argbColor;
+                    data.fcCustomMaskHasLast = true;
+                    updateFcMaskTintHeaderUi(false);
                     persistSliderTick();
                 }
 
@@ -2304,8 +2415,13 @@ public class MainActivity extends Activity {
                 data.fcBottomGlowChroma = def.fcBottomGlowChroma;
                 data.fcSingleGlow = def.fcSingleGlow;
                 data.fcSingleGlowChroma = def.fcSingleGlowChroma;
+                data.fcColorEnabled = def.fcColorEnabled;
                 data.fcColor = def.fcColor;
                 data.fcLastColor = def.fcLastColor;
+                data.fcCustomMaskEnabled = def.fcCustomMaskEnabled;
+                data.fcCustomMaskColor = def.fcCustomMaskColor;
+                data.fcCustomMaskLastColor = def.fcCustomMaskLastColor;
+                data.fcCustomMaskHasLast = def.fcCustomMaskHasLast;
                 data.fcMatchCard = def.fcMatchCard;
                 data.fcRemoveIslandMask = def.fcRemoveIslandMask;
                 data.fcRemoveShadeMask = def.fcRemoveShadeMask;
@@ -3263,6 +3379,7 @@ public class MainActivity extends Activity {
         sheet.card.addView(scroll, scrollLp);
 
         int[] verTitles = new int[]{
+                R.string.changelog_v112_title,
                 R.string.changelog_v111_title,
                 R.string.changelog_v110_title,
                 R.string.changelog_v109_title,
@@ -3277,6 +3394,7 @@ public class MainActivity extends Activity {
                 R.string.changelog_v100_title
         };
         int[] verBodies = new int[]{
+                R.string.changelog_v112_body,
                 R.string.changelog_v111_body,
                 R.string.changelog_v110_body,
                 R.string.changelog_v109_body,
@@ -3358,6 +3476,36 @@ public class MainActivity extends Activity {
         openRepoOrUrl(targetUrl);
     }
 
+    private boolean isUpdatedAppInstall() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return pi != null && pi.lastUpdateTime > pi.firstInstallTime;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void maybeShowPostUpdateChangelog(Bundle savedInstanceState, boolean fromThemeRecreate) {
+        int curVer = getInstalledVersionCode();
+        int lastSeen = ConfigStore.getLastSeenVersionCode(this);
+        boolean isPostUpdate = (lastSeen > 0 && lastSeen < curVer)
+                || (lastSeen == 0 && (hadPriorPrefs || isUpdatedAppInstall()));
+        if (lastSeen < curVer) {
+            ConfigStore.setLastSeenVersionCode(this, curVer);
+        }
+        if (isPostUpdate && savedInstanceState == null && !fromThemeRecreate) {
+            final View root = findViewById(android.R.id.content);
+            if (root != null) {
+                root.postDelayed(() -> {
+                    if (!isFinishing() && !isDestroyed()
+                            && !LivingFlowUpdatePages.hasActiveStage(MainActivity.this)) {
+                        showChangelogDialog();
+                    }
+                }, 180L);
+            }
+        }
+    }
+
     int getInstalledVersionCode() {
         try {
             PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
@@ -3367,7 +3515,7 @@ public class MainActivity extends Activity {
             //noinspection deprecation
             return pi.versionCode;
         } catch (Throwable ignored) {
-            return 1101;
+            return 1102;
         }
     }
 
@@ -3379,12 +3527,12 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-        return "1.1.1";
+        return "1.1.2";
     }
 
     static String formatVerLabel(String ver) {
         if (ver == null || ver.trim().isEmpty()) {
-            return "v1.1.1";
+            return "v1.1.2";
         }
         String t = ver.trim();
         if (t.startsWith("v") || t.startsWith("V")) {
@@ -3599,7 +3747,7 @@ public class MainActivity extends Activity {
             out.versionName = !name.isEmpty() ? name : tag;
         }
         if (out.versionName == null || out.versionName.isEmpty()) {
-            out.versionName = "1.1.1";
+            out.versionName = "1.1.2";
         }
     }
 
@@ -4854,7 +5002,7 @@ public class MainActivity extends Activity {
                 sbFcMaskGradStrength.setProgress(data.fcMaskGradStrength);
             }
 
-            boolean customColorOn = (data.fcColor != 0);
+            boolean customColorOn = data.fcColorEnabled;
             if (!customColorOn) {
                 fcColorPickerUserExpanded = false;
             }
@@ -4862,11 +5010,29 @@ public class MainActivity extends Activity {
             if (fcColorPicker != null) {
                 int pickerColor = customColorOn
                         ? data.fcColor
-                        : (data.fcLastColor != 0 ? data.fcLastColor : ConfigStore.DEF_CUSTOM_COLOR);
+                        : data.fcLastColor;
                 fcColorPicker.setColor(pickerColor);
             }
             updateFcTintHeaderUi(false);
             setFcColorPickerExpanded(customColorOn && fcColorPickerUserExpanded, fcColorPickerStateSynced);
+
+            boolean customMaskColorOn = data.fcCustomMaskEnabled;
+            if (!customMaskColorOn) {
+                fcMaskColorPickerUserExpanded = false;
+            }
+            if (swFcCustomMaskColor != null) {
+                swFcCustomMaskColor.setChecked(customMaskColorOn);
+            }
+            if (fcMaskColorPicker != null) {
+                int maskPickerColor = customMaskColorOn
+                        ? data.fcCustomMaskColor
+                        : (data.fcCustomMaskHasLast
+                                ? data.fcCustomMaskLastColor
+                                : (data.fcColorEnabled ? data.fcColor : ConfigStore.DEF_CUSTOM_COLOR));
+                fcMaskColorPicker.setColor(maskPickerColor);
+            }
+            updateFcMaskTintHeaderUi(false);
+            setFcMaskColorPickerExpanded(customMaskColorOn && fcMaskColorPickerUserExpanded, fcMaskColorPickerStateSynced);
 
             if (tvSummaryOpacityBlur != null) {
                 tvSummaryOpacityBlur.setText(getString(
@@ -4911,61 +5077,262 @@ public class MainActivity extends Activity {
     }
 
     private void updateFcTintHeaderUi(boolean animateChevron) {
-        boolean customColorOn = (data.fcColor != 0);
-        boolean expanded = customColorOn && fcColorPickerUserExpanded;
-        if (tvFcCustomColorSummary != null) {
-            if (customColorOn) {
-                String hex = String.format(Locale.US, "#%06X", data.fcColor & 0x00FFFFFF);
-                tvFcCustomColorSummary.setText(hex + " · " + getString(R.string.pref_fc_custom_color_tap_expand));
+        updateTintRowHeaderUi(
+                data.fcColorEnabled,
+                data.fcColor,
+                fcColorPickerUserExpanded,
+                tvFcCustomColorSummary,
+                R.string.pref_fc_custom_color_summary,
+                layoutFcTintBadge,
+                vFcTintSwatchDot,
+                ivFcTintChevron,
+                animateChevron);
+    }
+
+    private void updateFcMaskTintHeaderUi(boolean animateChevron) {
+        updateTintRowHeaderUi(
+                data.fcCustomMaskEnabled,
+                data.fcCustomMaskColor,
+                fcMaskColorPickerUserExpanded,
+                tvFcCustomMaskColorSummary,
+                R.string.pref_fc_custom_mask_color_summary,
+                layoutFcMaskTintBadge,
+                vFcMaskTintSwatchDot,
+                ivFcMaskTintChevron,
+                animateChevron);
+    }
+
+    private void updateTintRowHeaderUi(boolean enabled, int colorArgb, boolean userExpanded, TextView tvSummary,
+                                       int defaultSummaryRes, View badge, View swatchDot,
+                                       ImageView chevron, boolean animateChevron) {
+        boolean expanded = enabled && userExpanded;
+        if (tvSummary != null) {
+            if (enabled) {
+                String hex = String.format(Locale.US, "#%08X", colorArgb);
+                tvSummary.setText(hex + " · " + getString(R.string.pref_fc_custom_color_tap_expand));
             } else {
-                tvFcCustomColorSummary.setText(R.string.pref_fc_custom_color_summary);
+                tvSummary.setText(defaultSummaryRes);
             }
         }
-        if (layoutFcTintBadge != null) {
-            layoutFcTintBadge.setVisibility(customColorOn ? View.VISIBLE : View.GONE);
+        if (badge != null) {
+            badge.setVisibility(enabled ? View.VISIBLE : View.GONE);
         }
-        if (vFcTintSwatchDot != null && customColorOn) {
+        if (swatchDot != null && enabled) {
             GradientDrawable dot = new GradientDrawable();
             dot.setShape(GradientDrawable.OVAL);
-            dot.setColor(0xFF000000 | (data.fcColor & 0x00FFFFFF));
+            dot.setColor(colorArgb);
             boolean dark = ConfigStore.isDarkThemeActive(this);
             dot.setStroke(Math.max(1, dp(1)), dark ? 0x38FFFFFF : 0x24000000);
-            vFcTintSwatchDot.setBackground(dot);
+            swatchDot.setBackground(dot);
         }
-        if (ivFcTintChevron != null) {
+        if (chevron != null) {
             float targetRot = expanded ? 270f : 90f;
-            ivFcTintChevron.animate().cancel();
+            chevron.animate().cancel();
             if (animateChevron) {
-                ivFcTintChevron.animate()
+                chevron.animate()
                         .rotation(targetRot)
                         .setDuration(300L)
                         .setInterpolator(FLUID_EASE)
                         .start();
             } else {
-                ivFcTintChevron.setRotation(targetRot);
+                chevron.setRotation(targetRot);
             }
         }
     }
 
-    private void snapFcColorPickerVisibility(boolean expand) {
-        if (layoutFcColorPickerWrap == null) {
+    private static void snapColorPickerWrapVisibility(View wrap, View divider, boolean expand) {
+        if (wrap == null) {
             return;
         }
-        ViewGroup.LayoutParams lp = layoutFcColorPickerWrap.getLayoutParams();
+        ViewGroup.LayoutParams lp = wrap.getLayoutParams();
         if (lp != null && lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
             lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
-            layoutFcColorPickerWrap.setLayoutParams(lp);
+            wrap.setLayoutParams(lp);
         }
-        layoutFcColorPickerWrap.setAlpha(1f);
-        layoutFcColorPickerWrap.setTranslationY(0f);
-        layoutFcColorPickerWrap.setVisibility(expand ? View.VISIBLE : View.GONE);
-        if (layoutFcColorPickerWrap instanceof ViewGroup) {
-            ((ViewGroup) layoutFcColorPickerWrap).setClipChildren(false);
-            ((ViewGroup) layoutFcColorPickerWrap).setClipToPadding(false);
+        wrap.setAlpha(1f);
+        wrap.setTranslationY(0f);
+        wrap.setVisibility(expand ? View.VISIBLE : View.GONE);
+        if (wrap instanceof ViewGroup) {
+            ((ViewGroup) wrap).setClipChildren(false);
+            ((ViewGroup) wrap).setClipToPadding(false);
         }
-        if (dividerFcTintPicker != null) {
-            dividerFcTintPicker.setAlpha(1f);
-            dividerFcTintPicker.setVisibility(expand ? View.VISIBLE : View.GONE);
+        if (divider != null) {
+            divider.setAlpha(1f);
+            divider.setVisibility(expand ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private ValueAnimator animateColorPickerWrapExpanded(final View wrap, final View divider,
+                                                         final ValueAnimator prevAnimator,
+                                                         final boolean expand,
+                                                         final boolean isCardTint) {
+        if (prevAnimator != null) {
+            prevAnimator.cancel();
+        }
+        if (divider != null) {
+            divider.animate().cancel();
+        }
+        final ViewGroup wrapGroup = wrap instanceof ViewGroup ? (ViewGroup) wrap : null;
+        final boolean curVisible = wrap.getVisibility() == View.VISIBLE;
+
+        if (expand) {
+            final int startH = curVisible ? Math.max(0, wrap.getHeight()) : 0;
+            final float startAlpha = curVisible ? wrap.getAlpha() : 0f;
+            final float startTransY = curVisible ? wrap.getTranslationY() : -dp(10);
+
+            int availW = (layoutFcTintCard != null && layoutFcTintCard.getWidth() > 0)
+                    ? layoutFcTintCard.getWidth()
+                    : (getResources().getDisplayMetrics().widthPixels - dp(32));
+            wrap.measure(
+                    View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            final int targetH = Math.max(1, wrap.getMeasuredHeight());
+
+            if (wrapGroup != null) {
+                wrapGroup.setClipChildren(true);
+                wrapGroup.setClipToPadding(true);
+            }
+            if (divider != null) {
+                if (divider.getVisibility() != View.VISIBLE) {
+                    divider.setAlpha(0f);
+                    divider.setVisibility(View.VISIBLE);
+                }
+                divider.animate()
+                        .alpha(1f)
+                        .setDuration(280L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+            }
+
+            ViewGroup.LayoutParams lp = wrap.getLayoutParams();
+            if (lp != null) {
+                lp.height = startH;
+                wrap.setLayoutParams(lp);
+            }
+            wrap.setAlpha(startAlpha);
+            wrap.setTranslationY(startTransY);
+            wrap.setVisibility(View.VISIBLE);
+
+            final ValueAnimator anim = ValueAnimator.ofInt(startH, targetH);
+            anim.setDuration(440L);
+            anim.setInterpolator(FLUID_EASE);
+            anim.addUpdateListener(animation -> {
+                ViewGroup.LayoutParams curLp = wrap.getLayoutParams();
+                if (curLp != null) {
+                    curLp.height = (Integer) animation.getAnimatedValue();
+                    wrap.requestLayout();
+                }
+                float frac = animation.getAnimatedFraction();
+                float alphaFrac = Math.min(1f, frac * 1.35f);
+                wrap.setAlpha(startAlpha + (1f - startAlpha) * alphaFrac);
+                wrap.setTranslationY(startTransY * (1f - frac));
+                if (vTopHeaderBlur != null) {
+                    vTopHeaderBlur.notifyTargetInvalidated();
+                }
+                if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+            });
+            anim.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (isCardTint) {
+                        if (fcColorPickerAnimator == anim) {
+                            fcColorPickerAnimator = null;
+                        }
+                        if (!cancelled && fcColorPickerExpanded) {
+                            snapColorPickerWrapVisibility(wrap, divider, true);
+                        }
+                    } else {
+                        if (fcMaskColorPickerAnimator == anim) {
+                            fcMaskColorPickerAnimator = null;
+                        }
+                        if (!cancelled && fcMaskColorPickerExpanded) {
+                            snapColorPickerWrapVisibility(wrap, divider, true);
+                        }
+                    }
+                }
+            });
+            anim.start();
+            return anim;
+        } else {
+            final int startH = curVisible ? Math.max(0, wrap.getHeight()) : 0;
+            if (startH <= 0) {
+                snapColorPickerWrapVisibility(wrap, divider, false);
+                return null;
+            }
+            final float startAlpha = wrap.getAlpha();
+            final float startTransY = wrap.getTranslationY();
+            final float endTransY = -dp(8);
+
+            if (wrapGroup != null) {
+                wrapGroup.setClipChildren(true);
+                wrapGroup.setClipToPadding(true);
+            }
+            if (divider != null && divider.getVisibility() == View.VISIBLE) {
+                divider.animate()
+                        .alpha(0f)
+                        .setDuration(250L)
+                        .setInterpolator(FLUID_EASE)
+                        .start();
+            }
+
+            final ValueAnimator anim = ValueAnimator.ofInt(startH, 0);
+            anim.setDuration(370L);
+            anim.setInterpolator(FLUID_EASE);
+            anim.addUpdateListener(animation -> {
+                ViewGroup.LayoutParams curLp = wrap.getLayoutParams();
+                if (curLp != null) {
+                    curLp.height = (Integer) animation.getAnimatedValue();
+                    wrap.requestLayout();
+                }
+                float frac = animation.getAnimatedFraction();
+                float alphaKeep = Math.max(0f, 1f - frac * 1.45f);
+                wrap.setAlpha(startAlpha * alphaKeep);
+                wrap.setTranslationY(startTransY + (endTransY - startTransY) * frac);
+                if (vTopHeaderBlur != null) {
+                    vTopHeaderBlur.notifyTargetInvalidated();
+                }
+                if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
+                    vSubpageHeaderBlur.notifyTargetInvalidated();
+                }
+            });
+            anim.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
+
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (isCardTint) {
+                        if (fcColorPickerAnimator == anim) {
+                            fcColorPickerAnimator = null;
+                        }
+                        if (!cancelled && !fcColorPickerExpanded) {
+                            snapColorPickerWrapVisibility(wrap, divider, false);
+                        }
+                    } else {
+                        if (fcMaskColorPickerAnimator == anim) {
+                            fcMaskColorPickerAnimator = null;
+                        }
+                        if (!cancelled && !fcMaskColorPickerExpanded) {
+                            snapColorPickerWrapVisibility(wrap, divider, false);
+                        }
+                    }
+                }
+            });
+            anim.start();
+            return anim;
         }
     }
 
@@ -4980,162 +5347,45 @@ public class MainActivity extends Activity {
         }
         fcColorPickerStateSynced = true;
         fcColorPickerExpanded = expand;
-        if (fcColorPickerAnimator != null) {
-            fcColorPickerAnimator.cancel();
-            fcColorPickerAnimator = null;
-        }
-        if (dividerFcTintPicker != null) {
-            dividerFcTintPicker.animate().cancel();
-        }
-        final ViewGroup wrapGroup = layoutFcColorPickerWrap instanceof ViewGroup
-                ? (ViewGroup) layoutFcColorPickerWrap : null;
-
         if (!animate) {
-            snapFcColorPickerVisibility(expand);
-            return;
-        }
-
-        if (expand) {
-            final int startH = curVisible ? Math.max(0, layoutFcColorPickerWrap.getHeight()) : 0;
-            final float startAlpha = curVisible ? layoutFcColorPickerWrap.getAlpha() : 0f;
-            final float startTransY = curVisible ? layoutFcColorPickerWrap.getTranslationY() : -dp(10);
-
-            int availW = (layoutFcTintCard != null && layoutFcTintCard.getWidth() > 0)
-                    ? layoutFcTintCard.getWidth()
-                    : (getResources().getDisplayMetrics().widthPixels - dp(32));
-            layoutFcColorPickerWrap.measure(
-                    View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.EXACTLY),
-                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-            final int targetH = Math.max(1, layoutFcColorPickerWrap.getMeasuredHeight());
-
-            if (wrapGroup != null) {
-                wrapGroup.setClipChildren(true);
-                wrapGroup.setClipToPadding(true);
+            if (fcColorPickerAnimator != null) {
+                fcColorPickerAnimator.cancel();
+                fcColorPickerAnimator = null;
             }
             if (dividerFcTintPicker != null) {
-                if (dividerFcTintPicker.getVisibility() != View.VISIBLE) {
-                    dividerFcTintPicker.setAlpha(0f);
-                    dividerFcTintPicker.setVisibility(View.VISIBLE);
-                }
-                dividerFcTintPicker.animate()
-                        .alpha(1f)
-                        .setDuration(280L)
-                        .setInterpolator(FLUID_EASE)
-                        .start();
+                dividerFcTintPicker.animate().cancel();
             }
-
-            ViewGroup.LayoutParams lp = layoutFcColorPickerWrap.getLayoutParams();
-            if (lp != null) {
-                lp.height = startH;
-                layoutFcColorPickerWrap.setLayoutParams(lp);
-            }
-            layoutFcColorPickerWrap.setAlpha(startAlpha);
-            layoutFcColorPickerWrap.setTranslationY(startTransY);
-            layoutFcColorPickerWrap.setVisibility(View.VISIBLE);
-
-            final ValueAnimator anim = ValueAnimator.ofInt(startH, targetH);
-            fcColorPickerAnimator = anim;
-            anim.setDuration(440L);
-            anim.setInterpolator(FLUID_EASE);
-            anim.addUpdateListener(animation -> {
-                ViewGroup.LayoutParams curLp = layoutFcColorPickerWrap.getLayoutParams();
-                if (curLp != null) {
-                    curLp.height = (Integer) animation.getAnimatedValue();
-                    layoutFcColorPickerWrap.requestLayout();
-                }
-                float frac = animation.getAnimatedFraction();
-                float alphaFrac = Math.min(1f, frac * 1.35f);
-                layoutFcColorPickerWrap.setAlpha(startAlpha + (1f - startAlpha) * alphaFrac);
-                layoutFcColorPickerWrap.setTranslationY(startTransY * (1f - frac));
-                if (vTopHeaderBlur != null) {
-                    vTopHeaderBlur.notifyTargetInvalidated();
-                }
-                if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
-                    vSubpageHeaderBlur.notifyTargetInvalidated();
-                }
-            });
-            anim.addListener(new AnimatorListenerAdapter() {
-                private boolean cancelled;
-
-                @Override
-                public void onAnimationCancel(Animator animation) {
-                    cancelled = true;
-                }
-
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    if (fcColorPickerAnimator == anim) {
-                        fcColorPickerAnimator = null;
-                    }
-                    if (!cancelled && fcColorPickerExpanded) {
-                        snapFcColorPickerVisibility(true);
-                    }
-                }
-            });
-            anim.start();
-        } else {
-            final int startH = curVisible ? Math.max(0, layoutFcColorPickerWrap.getHeight()) : 0;
-            if (startH <= 0) {
-                snapFcColorPickerVisibility(false);
-                return;
-            }
-            final float startAlpha = layoutFcColorPickerWrap.getAlpha();
-            final float startTransY = layoutFcColorPickerWrap.getTranslationY();
-            final float endTransY = -dp(8);
-
-            if (wrapGroup != null) {
-                wrapGroup.setClipChildren(true);
-                wrapGroup.setClipToPadding(true);
-            }
-            if (dividerFcTintPicker != null && dividerFcTintPicker.getVisibility() == View.VISIBLE) {
-                dividerFcTintPicker.animate()
-                        .alpha(0f)
-                        .setDuration(250L)
-                        .setInterpolator(FLUID_EASE)
-                        .start();
-            }
-
-            final ValueAnimator anim = ValueAnimator.ofInt(startH, 0);
-            fcColorPickerAnimator = anim;
-            anim.setDuration(370L);
-            anim.setInterpolator(FLUID_EASE);
-            anim.addUpdateListener(animation -> {
-                ViewGroup.LayoutParams curLp = layoutFcColorPickerWrap.getLayoutParams();
-                if (curLp != null) {
-                    curLp.height = (Integer) animation.getAnimatedValue();
-                    layoutFcColorPickerWrap.requestLayout();
-                }
-                float frac = animation.getAnimatedFraction();
-                float alphaKeep = Math.max(0f, 1f - frac * 1.45f);
-                layoutFcColorPickerWrap.setAlpha(startAlpha * alphaKeep);
-                layoutFcColorPickerWrap.setTranslationY(startTransY + (endTransY - startTransY) * frac);
-                if (vTopHeaderBlur != null) {
-                    vTopHeaderBlur.notifyTargetInvalidated();
-                }
-                if (vSubpageHeaderBlur != null && isFcSubpageOpen()) {
-                    vSubpageHeaderBlur.notifyTargetInvalidated();
-                }
-            });
-            anim.addListener(new AnimatorListenerAdapter() {
-                private boolean cancelled;
-
-                @Override
-                public void onAnimationCancel(Animator animation) {
-                    cancelled = true;
-                }
-
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    if (fcColorPickerAnimator == anim) {
-                        fcColorPickerAnimator = null;
-                    }
-                    if (!cancelled && !fcColorPickerExpanded) {
-                        snapFcColorPickerVisibility(false);
-                    }
-                }
-            });
-            anim.start();
+            snapColorPickerWrapVisibility(layoutFcColorPickerWrap, dividerFcTintPicker, expand);
+            return;
         }
+        fcColorPickerAnimator = animateColorPickerWrapExpanded(
+                layoutFcColorPickerWrap, dividerFcTintPicker, fcColorPickerAnimator, expand, true);
+    }
+
+    private void setFcMaskColorPickerExpanded(final boolean expand, boolean animate) {
+        if (layoutFcMaskColorPickerWrap == null) {
+            return;
+        }
+        final boolean curVisible = layoutFcMaskColorPickerWrap.getVisibility() == View.VISIBLE;
+        if (fcMaskColorPickerStateSynced && fcMaskColorPickerExpanded == expand
+                && fcMaskColorPickerAnimator == null && curVisible == expand) {
+            return;
+        }
+        fcMaskColorPickerStateSynced = true;
+        fcMaskColorPickerExpanded = expand;
+        if (!animate) {
+            if (fcMaskColorPickerAnimator != null) {
+                fcMaskColorPickerAnimator.cancel();
+                fcMaskColorPickerAnimator = null;
+            }
+            if (dividerFcMaskTintPicker != null) {
+                dividerFcMaskTintPicker.animate().cancel();
+            }
+            snapColorPickerWrapVisibility(layoutFcMaskColorPickerWrap, dividerFcMaskTintPicker, expand);
+            return;
+        }
+        fcMaskColorPickerAnimator = animateColorPickerWrapExpanded(
+                layoutFcMaskColorPickerWrap, dividerFcMaskTintPicker, fcMaskColorPickerAnimator, expand, false);
     }
 
     private void syncPreviewView(FluidCloudPreviewView preview) {
@@ -5151,7 +5401,10 @@ public class MainActivity extends Activity {
                 data.fcBottomGlowChroma,
                 data.fcSingleGlow,
                 data.fcSingleGlowChroma,
+                data.fcColorEnabled,
                 data.fcColor,
+                data.fcCustomMaskEnabled,
+                data.fcCustomMaskColor,
                 data.fcRemoveIslandMask,
                 data.fcMatchCard,
                 data.fcMaskFollowMedia,

@@ -656,7 +656,8 @@ public final class FluidCloudHook {
             public void run() {
                 sMediaColorSyncPending = false;
                 LAST_DRIFT_CHECK_MS.clear();
-                if (cfg.isFcEnabled() && (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled())) {
+                if (cfg.isFcEnabled() && (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()
+                        || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled())) {
                     ClassLoader cl = sPrimaryCl;
                     Set<View> rows = collectActiveCustomRows(cl);
                     boolean anyLockMedia = false;
@@ -672,14 +673,19 @@ public final class FluidCloudHook {
                         }
                     }
                     sLastLockCustomRowIsMedia = anyLockMedia;
+                    float liveAod = resolveLiveAodProgress(null);
                     for (View rowView : rows) {
                         if (rowView == null || !rowView.isAttachedToWindow()) {
                             continue;
                         }
                         LAST_CUSTOM_LOCK_STATE.remove(rowView);
+                        LAST_CUSTOM_MIX_VER.remove(rowView);
                         LAST_CUSTOM_MASK_VER.remove(rowView);
                         Object mgr = readField(rowView, "viewBlurManager");
                         ClassLoader effCl = cl != null ? cl : rowView.getClass().getClassLoader();
+                        if (isCustomOnLockscreen(mgr, null) && cfg.isFcColorEnabled()) {
+                            syncCustomRowLockMix(effCl, rowView, cfg, liveAod, true);
+                        }
                         if (!isCustomOnLockscreen(mgr, null) || !isRowInImmersiveFade(rowView)) {
                             syncCustomRowMask(effCl, rowView, mgr, cfg, false);
                         } else if (readRowImmersiveProgress(rowView) >= 0.99f) {
@@ -702,6 +708,34 @@ public final class FluidCloudHook {
                         View v = gradMasks.get(i);
                         if (v != null && v.isAttachedToWindow()) {
                             v.invalidate();
+                        }
+                    }
+                    if (cfg.isFcColorEnabled() && isCurrentlyOnLockscreen()) {
+                        ArrayList<Object> helpers;
+                        synchronized (ACTIVE_CAPSULE_HELPERS) {
+                            helpers = ACTIVE_CAPSULE_HELPERS.isEmpty()
+                                    ? new ArrayList<Object>(0)
+                                    : new ArrayList<>(ACTIVE_CAPSULE_HELPERS.keySet());
+                        }
+                        for (int i = 0, n = helpers.size(); i < n; i++) {
+                            Object h = helpers.get(i);
+                            if (h != null) {
+                                LAST_HELPER_VER.remove(h);
+                                syncHelperBlurProxies(cl, h, cfg, liveAod, true);
+                            }
+                        }
+                        ArrayList<View> ears;
+                        synchronized (ACTIVE_CAPSULE_EARS) {
+                            ears = ACTIVE_CAPSULE_EARS.isEmpty()
+                                    ? new ArrayList<View>(0)
+                                    : new ArrayList<>(ACTIVE_CAPSULE_EARS.keySet());
+                        }
+                        for (int i = 0, n = ears.size(); i < n; i++) {
+                            View ear = ears.get(i);
+                            if (ear != null && ear.isAttachedToWindow()) {
+                                LAST_EAR_VER.remove(ear);
+                                syncHelperBlurProxies(cl, ear, cfg, liveAod, true);
+                            }
                         }
                     }
                 }
@@ -765,36 +799,46 @@ public final class FluidCloudHook {
         return 0;
     }
 
-    private static int computeHelperKey(ConfigStore.HookConfig cfg, float rawAodProg) {
-        return (cfg.getFcVersion() * 31 + cfg.getFcOpacityInt()) * 512
+    private static int computeHelperKey(ConfigStore.HookConfig cfg, Object helperOrView, float rawAodProg) {
+        int mediaBit = (cfg.isFcColorEnabled()
+                && shouldSuppressCapsuleCustomColor(resolveHelperView(helperOrView), cfg)) ? 1 : 0;
+        return (((cfg.getFcVersion() * 31 + cfg.getFcOpacityInt()) * 2 + mediaBit) * 512)
                 + Math.round(clamp01(rawAodProg) * 255f);
     }
 
     private static int computeCustomMixKey(ConfigStore.HookConfig cfg, View rowView, float rawAodProg) {
         int immBucket = resolveImmBucket(readRowImmersiveProgress(rowView));
+        int mediaBit = (cfg.isFcColorEnabled() && shouldSuppressLockCustomColor(rowView, cfg)) ? 1 : 0;
         int h = cfg.getFcVersion();
         h = h * 31 + cfg.getFcImmersiveOpacityInt();
         h = h * 31 + immBucket;
+        h = h * 2 + mediaBit;
         return h * 512 + Math.round(clamp01(rawAodProg) * 255f);
     }
 
     private static int computeCustomMaskKey(View rowView, ConfigStore.HookConfig cfg,
                                             boolean onLock, float rawAodProg) {
         boolean isMedia = isMediaCustomRow(rowView);
-        int maskRgb = resolveMaskRgb(cfg, isMedia, onLock);
-        boolean hasTint = maskRgb != 0;
-        float maskScale = resolveMaskAlphaScale(cfg, isMedia, hasTint);
+        int mediaMaskRgb = resolveMediaMaskRgb(cfg, isMedia, onLock);
+        boolean hasMediaTint = mediaMaskRgb != 0;
+        boolean hasCustomMask = !hasMediaTint && isCustomMaskAllowed(cfg, isMedia, onLock);
+        int customMaskArgb = hasCustomMask ? cfg.getFcCustomMaskColor() : 0;
+        int effMaskRgb = hasMediaTint ? (mediaMaskRgb & 0x00FFFFFF)
+                : (hasCustomMask ? (customMaskArgb & 0x00FFFFFF) : 0);
+        float maskScale = resolveMaskAlphaScale(cfg, isMedia, hasMediaTint)
+                * (hasCustomMask ? ConfigStore.colorAlphaScale(customMaskArgb) : 1.0f);
         int maskScaleKey = Math.round(maskScale * 1000f);
         int maskAodKey = (onLock && !cfg.isFcMatchCard() && maskScale > 0.001f)
                 ? Math.round(clamp01(rawAodProg) * 255f) : 0;
         int gradKey = ((cfg.getFcMaskGradStartInt() * 101 + cfg.getFcMaskGradEndInt()) * 101
                 + cfg.getFcMaskGradMidInt());
+        int tintMode = (hasMediaTint ? 1 : 0) | (hasCustomMask ? 2 : 0);
         int modeFlags = (cfg.isFcEnabled() ? 1 : 0)
                 | (cfg.isFcMatchCard() ? 2 : 0)
                 | (cfg.isFcRemoveShadeMask() ? 4 : 0)
                 | (isMedia ? 8 : 0);
-        return (((((((((cfg.getFcVersion() << 1) | (onLock ? 1 : 0)) * 31) + (hasTint ? 1 : 0)) * 31
-                + maskRgb) * 31) + maskScaleKey) * 31 + maskAodKey) * 31 + gradKey) * 31 + modeFlags;
+        return (((((((((cfg.getFcVersion() << 1) | (onLock ? 1 : 0)) * 31) + tintMode) * 31
+                + effMaskRgb) * 31) + maskScaleKey) * 31 + maskAodKey) * 31 + gradKey) * 31 + modeFlags;
     }
 
     private static long computeCustomLockStateKey(View rowView, ConfigStore.HookConfig cfg,
@@ -803,7 +847,8 @@ public final class FluidCloudHook {
         int aodQ = onLock ? Math.round(clamp01(rawAodProg) * 255f) : 0;
         int immBucket = resolveImmBucket(readRowImmersiveProgress(rowView));
         boolean isMedia = isMediaCustomRow(rowView);
-        int mediaVer = (isMedia || cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled())
+        int mediaVer = (isMedia || cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()
+                || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled())
                 ? DynamicIslandHook.getMediaColorVersion() : 0;
         return (((long) fcVer) << 44)
                 | (onLock ? (1L << 43) : 0L)
@@ -967,13 +1012,67 @@ public final class FluidCloudHook {
         }
     }
 
-    private static int resolveMaskRgb(ConfigStore.HookConfig cfg, boolean isMedia, boolean onLock) {
+    private static boolean shouldSuppressLockCustomColor(View rowView, ConfigStore.HookConfig cfg) {
+        if (rowView != null && isMediaCustomRow(rowView)) {
+            return true;
+        }
+        return cfg.isFcNonMediaMaskEnabled() && DynamicIslandHook.hasActiveLockMediaFluidCloud();
+    }
+
+    private static View resolveHelperView(Object helperOrView) {
+        if (helperOrView instanceof View) {
+            return (View) helperOrView;
+        }
+        if (helperOrView == null) {
+            return null;
+        }
+        Object proxy = readField(helperOrView, "viewBlurProxy");
+        if (proxy == null) {
+            proxy = readField(helperOrView, "smoothSharedViewBlurProxy");
+        }
+        Object vObj = proxy != null ? callNoArg(proxy, "getView") : null;
+        return vObj instanceof View ? (View) vObj : null;
+    }
+
+    private static boolean isCapsuleMediaView(View view) {
+        if (view == null) {
+            return false;
+        }
+        View capsuleItem = findEnclosingCapsuleItem(view);
+        View root = capsuleItem != null ? capsuleItem : view;
+        return DynamicIslandHook.isViewContainingMedia(root);
+    }
+
+    private static boolean shouldSuppressCapsuleCustomColor(View capsuleView, ConfigStore.HookConfig cfg) {
+        if (capsuleView != null) {
+            if (isCapsuleMediaView(capsuleView)) {
+                return true;
+            }
+            return cfg.isFcNonMediaMaskEnabled() && DynamicIslandHook.hasActiveLockMediaFluidCloud();
+        }
+        return DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                && (cfg.isFcNonMediaMaskEnabled() || DynamicIslandHook.hasActiveLockMiniMedia());
+    }
+
+    private static boolean hasSurfaceMediaActive(boolean isMedia, boolean onLock) {
+        if (isMedia) {
+            return true;
+        }
+        return onLock
+                ? DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                : DynamicIslandHook.hasActiveShadeMediaFluidCloud();
+    }
+
+    private static int resolveMediaMaskRgb(ConfigStore.HookConfig cfg, boolean isMedia, boolean onLock) {
         boolean want = isMedia ? cfg.isFcMaskFollowMedia() : cfg.isFcNonMediaMaskEnabled();
         return want ? DynamicIslandHook.getScopedMediaMaskRgb(cfg, isMedia, false, onLock) : 0;
     }
 
-    private static boolean hasCustomMaskTint(ConfigStore.HookConfig cfg, boolean isMedia, boolean onLock) {
-        return resolveMaskRgb(cfg, isMedia, onLock) != 0;
+    private static boolean isCustomMaskAllowed(ConfigStore.HookConfig cfg, boolean isMedia, boolean onLock) {
+        if (isMedia || !cfg.isFcCustomMaskEnabled()) {
+            return false;
+        }
+        return !(cfg.isFcNonMediaMaskEnabled() && hasSurfaceMediaActive(false, onLock));
     }
 
     private static boolean hookScrim(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
@@ -1013,7 +1112,7 @@ public final class FluidCloudHook {
                         }
                         zeroMetaColorSafely(callNoArg(param.thisObject, "getBlurDrawable"));
                         float liveAod = resolveLiveAodProgress(param.thisObject);
-                        int helperKey = computeHelperKey(cfg, liveAod);
+                        int helperKey = computeHelperKey(cfg, param.thisObject, liveAod);
                         Integer prev = LAST_HELPER_VER.get(param.thisObject);
                         if (prev != null && (sAodVisualAnimatorRunning || prev == helperKey)) {
                             return;
@@ -1312,9 +1411,12 @@ public final class FluidCloudHook {
                     }
                     int argb = (Integer) res;
                     int a = (argb >>> 24) & 0xFF;
-                    int newA = clampAlpha(Math.round(a * cfg.getFcOpacity()));
-                    int custom = cfg.getFcColor();
-                    int rgb = (custom != 0) ? (custom & 0x00FFFFFF) : CLEAN_GLASS_RGB;
+                    boolean useCustom = cfg.isFcColorEnabled()
+                            && !shouldSuppressCapsuleCustomColor(resolveHelperView(param.thisObject), cfg);
+                    int custom = useCustom ? cfg.getFcColor() : 0;
+                    float colorAlpha = useCustom ? ConfigStore.colorAlphaScale(custom) : 1.0f;
+                    int newA = clampAlpha(Math.round(a * cfg.getFcOpacity() * colorAlpha));
+                    int rgb = useCustom ? (custom & 0x00FFFFFF) : CLEAN_GLASS_RGB;
                     param.setResult((newA << 24) | rgb);
                 }
             });
@@ -1412,7 +1514,7 @@ public final class FluidCloudHook {
                                 ((Paint) sp).setAlpha(0);
                             }
                         }
-                        int earKey = computeHelperKey(cfg, aodProg);
+                        int earKey = computeHelperKey(cfg, earView, aodProg);
                         Integer prev = LAST_EAR_VER.get(earView);
                         if (prev != null && prev == earKey) {
                             return;
@@ -1492,8 +1594,12 @@ public final class FluidCloudHook {
                         return;
                     }
                     boolean isMedia = sLastLockCustomRowIsMedia;
-                    boolean hasTint = hasCustomMaskTint(cfg, isMedia, true);
-                    float baseMaskScale = resolveMaskAlphaScale(cfg, isMedia, hasTint);
+                    int mediaMaskRgb = resolveMediaMaskRgb(cfg, isMedia, true);
+                    boolean hasMediaTint = mediaMaskRgb != 0;
+                    boolean hasCustomMask = !hasMediaTint && isCustomMaskAllowed(cfg, isMedia, true);
+                    int customMaskArgb = hasCustomMask ? cfg.getFcCustomMaskColor() : 0;
+                    float baseMaskScale = resolveMaskAlphaScale(cfg, isMedia, hasMediaTint)
+                            * (hasCustomMask ? ConfigStore.colorAlphaScale(customMaskArgb) : 1.0f);
                     float aodProg = easeAodProgress(resolveLiveAodProgress(null));
                     float maskScale = baseMaskScale * (1.0f - aodProg);
                     if (cfg.isFcMatchCard() || maskScale <= 0.001f) {
@@ -1506,7 +1612,8 @@ public final class FluidCloudHook {
                         if (Math.abs(v.getAlpha() - targetAlpha) > 0.002f) {
                             v.setAlpha(targetAlpha);
                         }
-                        int maskRgb = hasTint ? (resolveMaskRgb(cfg, isMedia, true) & 0x00FFFFFF) : 0;
+                        int maskRgb = hasMediaTint ? (mediaMaskRgb & 0x00FFFFFF)
+                                : (hasCustomMask ? (customMaskArgb & 0x00FFFFFF) : 0);
                         int maskH = readIntField(v, "capsuleMaskHeight", v.getHeight());
                         if (maskH <= 0) {
                             maskH = v.getHeight();
@@ -1516,7 +1623,7 @@ public final class FluidCloudHook {
                             int gEnd = cfg.getFcMaskGradEndInt();
                             int gMid = cfg.getFcMaskGradMidInt();
                             int gradKey = maskH;
-                            gradKey = gradKey * 31 + (hasTint ? 1 : 0);
+                            gradKey = gradKey * 31 + ((hasMediaTint ? 1 : 0) | (hasCustomMask ? 2 : 0));
                             gradKey = gradKey * 31 + maskRgb;
                             gradKey = gradKey * 31 + gStart;
                             gradKey = gradKey * 31 + gEnd;
@@ -1593,7 +1700,11 @@ public final class FluidCloudHook {
                             return stock;
                         }
                         try {
-                            Object replaced = buildMix(cl, cfg, stock, aodProg);
+                            boolean suppressCustom = isCapsule
+                                    ? shouldSuppressCapsuleCustomColor(null, cfg)
+                                    : (DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                                            && (cfg.isFcNonMediaMaskEnabled() || sLastLockCustomRowIsMedia));
+                            Object replaced = buildMix(cl, cfg, stock, aodProg, !suppressCustom);
                             if (replaced != null) {
                                 return replaced;
                             }
@@ -1625,7 +1736,9 @@ public final class FluidCloudHook {
                             return;
                         }
                         try {
-                            Object replaced = buildMix(cl, cfg, stock, aodProg);
+                            boolean suppressCustom = DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                                    && (cfg.isFcNonMediaMaskEnabled() || sLastLockCustomRowIsMedia);
+                            Object replaced = buildMix(cl, cfg, stock, aodProg, !suppressCustom);
                             if (replaced != null) {
                                 param.setResult(replaced);
                             }
@@ -2806,7 +2919,8 @@ public final class FluidCloudHook {
                 boolean customMixOn = cfg.isFcLockTintOrMaskModified()
                         || cfg.isFcImmersiveOpacityModified();
                 int[] exp = computeExpectedMixFgColorsForOpacity(
-                        cfg, cfg.getFcImmersiveOpacity(), clamp01(rawAodProg), customMixOn);
+                        cfg, cfg.getFcImmersiveOpacity(), clamp01(rawAodProg), customMixOn,
+                        !shouldSuppressLockCustomColor(rowView, cfg));
                 if (exp == null || exp.length < 2) {
                     return;
                 }
@@ -2941,13 +3055,15 @@ public final class FluidCloudHook {
         if (curMix == null) {
             return false;
         }
+        boolean allowCustomColor = !shouldSuppressLockCustomColor(rowView, cfg);
         int[] exp = atImmersive
                 ? computeExpectedMixFgColorsForOpacity(
                         cfg,
                         cfg.getFcImmersiveOpacity(),
                         rawAodProg,
-                        cfg.isFcLockTintOrMaskModified() || cfg.isFcImmersiveOpacityModified())
-                : computeExpectedMixFgColors(cfg, rawAodProg);
+                        cfg.isFcLockTintOrMaskModified() || cfg.isFcImmersiveOpacityModified(),
+                        allowCustomColor)
+                : computeExpectedMixFgColors(cfg, rawAodProg, allowCustomColor);
         if (!isMixMatchingExpected(curMix, exp[0], exp[1])) {
             return true;
         }
@@ -3403,9 +3519,14 @@ public final class FluidCloudHook {
                             ? isMediaObj
                             : resolveAndCacheMetaDrawableIsMedia(cl, metaDrawable);
                     boolean onLock = isCustomOnLockscreen(null, null);
-                    int maskRgb = resolveMaskRgb(cfg, isMedia, onLock);
-                    boolean hasTint = maskRgb != 0;
-                    float maskScale = resolveMaskAlphaScale(cfg, isMedia, hasTint) * immFade;
+                    int mediaMaskRgb = resolveMediaMaskRgb(cfg, isMedia, onLock);
+                    boolean hasMediaTint = mediaMaskRgb != 0;
+                    boolean hasCustomMask = !hasMediaTint && isCustomMaskAllowed(cfg, isMedia, onLock);
+                    int customMaskArgb = hasCustomMask ? cfg.getFcCustomMaskColor() : 0;
+                    boolean hasAnyTint = hasMediaTint || hasCustomMask;
+                    float maskScale = resolveMaskAlphaScale(cfg, isMedia, hasMediaTint)
+                            * (hasCustomMask ? ConfigStore.colorAlphaScale(customMaskArgb) : 1.0f)
+                            * immFade;
                     boolean stripForAod = false;
                     if (maskScale > 0.001f && onLock) {
                         float aodProg = easeAodProgress(resolveLiveAodProgress(null));
@@ -3420,7 +3541,7 @@ public final class FluidCloudHook {
                     CustomRowMaskSpec newSpec = null;
                     if (!stripForAod && maskScale > 0.001f) {
                         boolean hasBrightWhiteStop = false;
-                        if (!isMedia && !hasTint) {
+                        if (!isMedia && !hasAnyTint) {
                             Boolean cachedBw = immFade < 0.95f
                                     ? META_DRAWABLE_BRIGHT_WHITE.get(metaDrawable) : null;
                             if (cachedBw != null) {
@@ -3473,7 +3594,9 @@ public final class FluidCloudHook {
                                 aStart = Math.min(0x38, clampAlpha(Math.round(aStart * 0.22f)));
                             }
                             if (aStart > 0) {
-                                int rgb = hasTint ? (maskRgb & 0x00FFFFFF) : (fallbackRgb & 0x00FFFFFF);
+                                int rgb = hasMediaTint ? (mediaMaskRgb & 0x00FFFFFF)
+                                        : (hasCustomMask ? (customMaskArgb & 0x00FFFFFF)
+                                        : (fallbackRgb & 0x00FFFFFF));
                                 newSpec = new CustomRowMaskSpec(
                                         rgb,
                                         aStart,
@@ -3568,7 +3691,7 @@ public final class FluidCloudHook {
                             ((Paint) sp).setAlpha(0);
                         }
                     }
-                    int helperKey = computeHelperKey(cfg, aodProg);
+                    int helperKey = computeHelperKey(cfg, helper, aodProg);
                     Integer prev = LAST_HELPER_VER.get(helper);
                     if (prev != null && prev == helperKey) {
                         return;
@@ -4057,7 +4180,7 @@ public final class FluidCloudHook {
                 if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
                     ((Paint) sp).setAlpha(0);
                 }
-                int helperKey = computeHelperKey(cfg, rawAodProg);
+                int helperKey = computeHelperKey(cfg, helper, rawAodProg);
                 Integer prevH = LAST_HELPER_VER.get(helper);
                 boolean helperChanged = endpoint || prevH == null || prevH != helperKey;
                 DynamicIslandHook.setCardBackgroundViewsAlphaInTree(
@@ -4100,7 +4223,7 @@ public final class FluidCloudHook {
                 if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
                     ((Paint) sp).setAlpha(0);
                 }
-                int earKey = computeHelperKey(cfg, rawAodProg);
+                int earKey = computeHelperKey(cfg, earView, rawAodProg);
                 Integer prevE = LAST_EAR_VER.get(earView);
                 if (!endpoint && prevE != null && prevE == earKey) {
                     continue;
@@ -4430,8 +4553,14 @@ public final class FluidCloudHook {
             }
             Object targetMix = origMix;
             if (origMix != null) {
+                Object vObj = proxy != null ? callNoArg(proxy, "getView") : null;
+                View proxyView = vObj instanceof View ? (View) vObj : null;
+                boolean allowCustom = isCapsule
+                        ? !shouldSuppressCapsuleCustomColor(proxyView, cfg)
+                        : !(DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                                && (cfg.isFcNonMediaMaskEnabled() || sLastLockCustomRowIsMedia));
                 targetMix = (cfg.isFcEnabled() && (cfg.isFcLockTintOrMaskModified() || rawAod > 0.001f))
-                        ? buildMix(cl, cfg, origMix, rawAod)
+                        ? buildMix(cl, cfg, origMix, rawAod, allowCustom)
                         : origMix;
             }
             boolean radiusChanged = applyScaledBlurRadius(blurCfg, cfg, cfg.isFcEnabled());
@@ -4552,7 +4681,8 @@ public final class FluidCloudHook {
                     boolean customMixOn = atImmersive
                             ? (cfg.isFcLockTintOrMaskModified() || cfg.isFcImmersiveOpacityModified())
                             : cfg.isFcLockTintOrMaskModified();
-                    Object targetMix = buildMixForOpacity(cl, cfg, origMix, rawAod, targetOp, customMixOn);
+                    Object targetMix = buildMixForOpacity(cl, cfg, origMix, rawAod, targetOp, customMixOn,
+                            !shouldSuppressLockCustomColor(rowView, cfg));
                     LOCK_CUSTOM_MIX_APPLIED.put(blurCfg, Boolean.TRUE);
                     applyBlurMixAndLight(cl, proxy, blurCfg, targetMix, false, easedAod, rawAod,
                             fastTransition && !radiusChanged);
@@ -4860,9 +4990,11 @@ public final class FluidCloudHook {
                 DynamicIslandHook.boostHighlightChromaArgb(
                         mediaTintArgb, chromaBoost, brightBoost, rgb);
                 colored = true;
-            } else if (cfg.getFcColor() != 0) {
+            } else if (!shouldSuppressLockCustomColor(rowView, cfg) && cfg.isFcColorEnabled()
+                    && ((cfg.getFcColor() >>> 24) & 0xFF) > 0) {
+                float ca = ConfigStore.colorAlphaScale(cfg.getFcColor());
                 DynamicIslandHook.boostHighlightChromaArgb(
-                        cfg.getFcColor(), chromaBoost, brightBoost, rgb);
+                        cfg.getFcColor(), chromaBoost * ca, brightBoost, rgb);
                 colored = true;
             }
 
@@ -5278,30 +5410,37 @@ public final class FluidCloudHook {
         }
     }
 
-    private static int[] computeExpectedMixFgColors(ConfigStore.HookConfig cfg, float aodProgress) {
+    private static int[] computeExpectedMixFgColors(ConfigStore.HookConfig cfg, float aodProgress,
+                                                      boolean allowCustomColor) {
         return computeExpectedMixFgColorsForOpacity(
-                cfg, cfg.getFcOpacity(), aodProgress, cfg.isFcLockTintOrMaskModified());
+                cfg, cfg.getFcOpacity(), aodProgress, cfg.isFcLockTintOrMaskModified(), allowCustomColor);
     }
 
     private static int[] computeExpectedMixFgColorsForOpacity(ConfigStore.HookConfig cfg,
                                                               float opacity,
                                                               float aodProgress,
-                                                              boolean useCustomMix) {
+                                                              boolean useCustomMix,
+                                                              boolean allowCustomColor) {
         float aod = easeAodProgress(aodProgress);
         int lockRgb = CLEAN_GLASS_RGB;
         int lockTopA = 174;
         int lockLiftRgb = 0xB3B3B3;
         if (useCustomMix) {
-            int customColor = cfg.getFcColor();
-            if (customColor != 0) {
+            boolean useCustom = allowCustomColor && cfg.isFcColorEnabled();
+            if (useCustom) {
+                int customColor = cfg.getFcColor();
+                float colorAlpha = ConfigStore.colorAlphaScale(customColor);
                 lockRgb = customColor & 0x00FFFFFF;
-                lockTopA = clampAlpha(Math.round(189.0f * opacity));
+                lockTopA = clampAlpha(Math.round(189.0f * opacity * colorAlpha));
                 int cr = (customColor >> 16) & 0xFF;
                 int cg = (customColor >> 8) & 0xFF;
                 int cb = customColor & 0xFF;
-                int lr = clampAlpha(Math.round(140.25f + 0.45f * cr));
-                int lg = clampAlpha(Math.round(140.25f + 0.45f * cg));
-                int lb = clampAlpha(Math.round(140.25f + 0.45f * cb));
+                float tintR = 140.25f + 0.45f * cr;
+                float tintG = 140.25f + 0.45f * cg;
+                float tintB = 140.25f + 0.45f * cb;
+                int lr = clampAlpha(Math.round(179.0f + (tintR - 179.0f) * colorAlpha));
+                int lg = clampAlpha(Math.round(179.0f + (tintG - 179.0f) * colorAlpha));
+                int lb = clampAlpha(Math.round(179.0f + (tintB - 179.0f) * colorAlpha));
                 lockLiftRgb = (lr << 16) | (lg << 8) | lb;
             } else {
                 lockTopA = clampAlpha(Math.round(174.0f * opacity));
@@ -5329,15 +5468,17 @@ public final class FluidCloudHook {
     }
 
     private static Object buildMix(ClassLoader cl, ConfigStore.HookConfig cfg, Object origMix,
-                                   float aodProgress) throws Exception {
+                                   float aodProgress, boolean allowCustomColor) throws Exception {
         return buildMixForOpacity(
-                cl, cfg, origMix, aodProgress, cfg.getFcOpacity(), cfg.isFcLockTintOrMaskModified());
+                cl, cfg, origMix, aodProgress, cfg.getFcOpacity(),
+                cfg.isFcLockTintOrMaskModified(), allowCustomColor);
     }
 
     private static Object buildMixForOpacity(ClassLoader cl, ConfigStore.HookConfig cfg, Object origMix,
                                              float aodProgress, float opacity,
-                                             boolean useCustomMix) throws Exception {
-        int[] fgColors = computeExpectedMixFgColorsForOpacity(cfg, opacity, aodProgress, useCustomMix);
+                                             boolean useCustomMix, boolean allowCustomColor) throws Exception {
+        int[] fgColors = computeExpectedMixFgColorsForOpacity(
+                cfg, opacity, aodProgress, useCustomMix, allowCustomColor);
         int newTop = fgColors[0];
         int liftColor = fgColors[1];
         int liftMode = 2;

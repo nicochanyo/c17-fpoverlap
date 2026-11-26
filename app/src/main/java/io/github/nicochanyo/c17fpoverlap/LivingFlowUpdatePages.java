@@ -871,6 +871,7 @@ public final class LivingFlowUpdatePages {
         }
 
         int[] verTitles = new int[]{
+                R.string.changelog_v112_title,
                 R.string.changelog_v111_title,
                 R.string.changelog_v110_title,
                 R.string.changelog_v109_title,
@@ -885,6 +886,7 @@ public final class LivingFlowUpdatePages {
                 R.string.changelog_v100_title
         };
         int[] verBodies = new int[]{
+                R.string.changelog_v112_body,
                 R.string.changelog_v111_body,
                 R.string.changelog_v110_body,
                 R.string.changelog_v109_body,

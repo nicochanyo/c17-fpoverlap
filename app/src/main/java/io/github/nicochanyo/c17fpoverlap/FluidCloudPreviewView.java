@@ -37,7 +37,10 @@ public class FluidCloudPreviewView extends View {
     private int fcBottomGlowChroma = ConfigStore.DEF_FC_BOTTOM_GLOW_CHROMA;
     private int fcSingleGlow = ConfigStore.DEF_FC_BOTTOM_GLOW;
     private int fcSingleGlowChroma = ConfigStore.DEF_FC_BOTTOM_GLOW_CHROMA;
+    private boolean fcColorEnabled = false;
     private int fcColor = ConfigStore.DEF_FC_COLOR;
+    private boolean fcCustomMaskEnabled = false;
+    private int fcCustomMaskColor = ConfigStore.DEF_FC_CUSTOM_MASK_COLOR;
     private boolean fcRemoveIslandMask = true;
     private boolean fcMatchCard = true;
     private boolean fcMaskFollowMedia = false;
@@ -84,7 +87,9 @@ public class FluidCloudPreviewView extends View {
 
     public void updateParams(boolean enabled, int lockOpacity, int islandOpacity,
                              int blur, int bottomGlow, int bottomGlowChroma,
-                             int singleGlow, int singleGlowChroma, int color,
+                             int singleGlow, int singleGlowChroma,
+                             boolean colorEnabled, int color,
+                             boolean customMaskEnabled, int customMaskColor,
                              boolean removeIslandMask, boolean matchCard,
                              boolean maskFollowMedia, int maskBrightness, int maskChroma,
                              int maskStrength, boolean nonMediaMaskEnabled, int nonMediaMaskColor,
@@ -99,7 +104,10 @@ public class FluidCloudPreviewView extends View {
         this.fcBottomGlowChroma = ConfigStore.clampBottomGlowChroma(bottomGlowChroma);
         this.fcSingleGlow = ConfigStore.clampBottomGlow(singleGlow);
         this.fcSingleGlowChroma = ConfigStore.clampBottomGlowChroma(singleGlowChroma);
-        this.fcColor = ConfigStore.normalizeColor(color);
+        this.fcColorEnabled = colorEnabled;
+        this.fcColor = color;
+        this.fcCustomMaskEnabled = customMaskEnabled;
+        this.fcCustomMaskColor = customMaskColor;
         this.fcRemoveIslandMask = removeIslandMask;
         this.fcMatchCard = matchCard;
         this.fcMaskFollowMedia = maskFollowMedia;
@@ -177,19 +185,26 @@ public class FluidCloudPreviewView extends View {
         int glowChromaPct = fcEnabled ? fcBottomGlowChroma : 0;
         int singleGlowBoostPct = fcEnabled ? fcSingleGlow : 0;
         int singleGlowChromaPct = fcEnabled ? fcSingleGlowChroma : 0;
-        int baseColor = (fcEnabled && fcColor != 0) ? fcColor : 0xFF1A1C22;
-        int r = Color.red(baseColor);
-        int g = Color.green(baseColor);
-        int b = Color.blue(baseColor);
+        boolean nonMediaTint = fcEnabled && fcNonMediaMaskEnabled;
+        int mediaBaseColor = 0xFF1A1C22;
+        int mr = Color.red(mediaBaseColor);
+        int mg = Color.green(mediaBaseColor);
+        int mb = Color.blue(mediaBaseColor);
+        boolean useCustomBg = !nonMediaTint && fcEnabled && fcColorEnabled;
+        int nonMediaBaseColor = useCustomBg ? fcColor : 0xFF1A1C22;
+        float nonMediaBodyOp = useCustomBg ? (lockOp * ConfigStore.colorAlphaScale(fcColor)) : lockOp;
+        int nr = Color.red(nonMediaBaseColor);
+        int ng = Color.green(nonMediaBaseColor);
+        int nb = Color.blue(nonMediaBaseColor);
 
-        // 1. Top Expanded Dynamic Island card preview (uses islandOp)
+        // 1. Top Expanded Dynamic Island card preview (media card: clean glass + optional album-art mask, ignores custom non-media colors)
         float padH = 14f * d;
         float topY = 12f * d;
         float islandH = h * 0.48f;
         islandRect.set(padH, topY, w - padH, topY + islandH);
         float cardR = 16f * d;
 
-        drawFrostedCard(canvas, islandRect, cardR, r, g, b, islandOp, blurScale);
+        drawFrostedCard(canvas, islandRect, cardR, mr, mg, mb, islandOp, blurScale);
 
         // Dark or media-tinted top-to-transparent gradient overlay (shared smooth template)
         if (!fcEnabled || (!fcRemoveIslandMask && maskStrengthScale > 0.001f)) {
@@ -217,7 +232,7 @@ public class FluidCloudPreviewView extends View {
             canvas.restore();
         }
 
-        int islandGlowColor = (fcEnabled && fcColor != 0) ? fcColor : 0xFFE9546B;
+        int islandGlowColor = 0xFFE9546B;
         drawBottomBrightening(canvas, islandRect, islandClip, cardR, glowBoostPct, glowChromaPct, islandGlowColor);
 
         // Mini Dynamic Island card UI skeleton
@@ -251,23 +266,24 @@ public class FluidCloudPreviewView extends View {
                 pillCx + 1f * d, pillCy - 4.5f * d,
                 pillCx + 3.5f * d, pillCy + 4.5f * d, 1f * d, 1f * d, paint);
 
-        // 2. Bottom Lockscreen Capsule Fluid Cloud pill preview (uses lockOp)
+        // 2. Bottom Lockscreen Capsule Fluid Cloud pill preview (non-media card: uses custom colors when Follow Media is off)
         float capW = Math.min(w - 2f * padH, 168f * d);
         float capH = 34f * d;
         float capLeft = (w - capW) * 0.5f;
         float capTop = h - 12f * d - capH;
         capsuleRect.set(capLeft, capTop, capLeft + capW, capTop + capH);
         float capR = capH * 0.5f;
-        drawFrostedCard(canvas, capsuleRect, capR, r, g, b, lockOp, blurScale);
+        drawFrostedCard(canvas, capsuleRect, capR, nr, ng, nb, nonMediaBodyOp, blurScale);
 
-        boolean nonMediaTint = fcEnabled && fcNonMediaMaskEnabled;
         int effNonMediaOp = nonMediaTint ? fcNonMediaFollowMaskOpacity : fcNonMediaMaskOpacity;
         float nonMediaOpacityScale = fcEnabled ? ((effNonMediaOp / 100.0f) * gradStrengthScale) : 1.0f;
         if (!fcEnabled || (!fcMatchCard && nonMediaOpacityScale > 0.001f)) {
-            int scrimA = fcEnabled ? Math.min(235, Math.round(115f * nonMediaOpacityScale)) : 115;
+            boolean useCustomMask = !nonMediaTint && fcEnabled && fcCustomMaskEnabled;
+            float customMaskAlpha = useCustomMask ? ConfigStore.colorAlphaScale(fcCustomMaskColor) : 1.0f;
+            int scrimA = fcEnabled ? Math.min(235, Math.round(115f * nonMediaOpacityScale * customMaskAlpha)) : 115;
             int maskColor = nonMediaTint
                     ? computePreviewMaskRgb(0xFFE9546B, fcMaskBrightness, fcMaskChroma)
-                    : 0;
+                    : (useCustomMask ? (fcCustomMaskColor & 0x00FFFFFF) : 0);
             if (scrimA > 0) {
                 ConfigStore.SmoothGradientSpec capSpec = ConfigStore.buildSmoothGradient(
                         maskColor, scrimA, effGradStart, effGradEnd, effGradMid);
@@ -290,9 +306,9 @@ public class FluidCloudPreviewView extends View {
             }
         }
 
-        int lockGlowColor = (fcEnabled && fcNonMediaMaskEnabled)
+        int lockGlowColor = nonMediaTint
                 ? 0xFFE9546B
-                : ((fcEnabled && fcColor != 0) ? fcColor : 0xFFFFFFFF);
+                : ((useCustomBg && ((fcColor >>> 24) & 0xFF) > 0) ? fcColor : 0xFFFFFFFF);
         drawBottomBrightening(canvas, capsuleRect, capsuleClip, capR, singleGlowBoostPct, singleGlowChromaPct, lockGlowColor);
 
         float dotSize = 18f * d;
