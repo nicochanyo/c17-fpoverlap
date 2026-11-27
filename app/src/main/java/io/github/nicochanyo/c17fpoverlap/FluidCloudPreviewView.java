@@ -41,6 +41,8 @@ public class FluidCloudPreviewView extends View {
     private int fcColor = ConfigStore.DEF_FC_COLOR;
     private boolean fcCustomMaskEnabled = false;
     private int fcCustomMaskColor = ConfigStore.DEF_FC_CUSTOM_MASK_COLOR;
+    private boolean fcCustomGlowEnabled = false;
+    private int fcCustomGlowColor = ConfigStore.DEF_FC_CUSTOM_GLOW_COLOR;
     private boolean fcRemoveIslandMask = true;
     private boolean fcMatchCard = true;
     private boolean fcMaskFollowMedia = false;
@@ -90,6 +92,7 @@ public class FluidCloudPreviewView extends View {
                              int singleGlow, int singleGlowChroma,
                              boolean colorEnabled, int color,
                              boolean customMaskEnabled, int customMaskColor,
+                             boolean customGlowEnabled, int customGlowColor,
                              boolean removeIslandMask, boolean matchCard,
                              boolean maskFollowMedia, int maskBrightness, int maskChroma,
                              int maskStrength, boolean nonMediaMaskEnabled, int nonMediaMaskColor,
@@ -108,6 +111,8 @@ public class FluidCloudPreviewView extends View {
         this.fcColor = color;
         this.fcCustomMaskEnabled = customMaskEnabled;
         this.fcCustomMaskColor = customMaskColor;
+        this.fcCustomGlowEnabled = customGlowEnabled;
+        this.fcCustomGlowColor = customGlowColor;
         this.fcRemoveIslandMask = removeIslandMask;
         this.fcMatchCard = matchCard;
         this.fcMaskFollowMedia = maskFollowMedia;
@@ -306,10 +311,25 @@ public class FluidCloudPreviewView extends View {
             }
         }
 
-        int lockGlowColor = nonMediaTint
-                ? 0xFFE9546B
-                : ((useCustomBg && ((fcColor >>> 24) & 0xFF) > 0) ? fcColor : 0xFFFFFFFF);
-        drawBottomBrightening(canvas, capsuleRect, capsuleClip, capR, singleGlowBoostPct, singleGlowChromaPct, lockGlowColor);
+        boolean useCustomGlow = !nonMediaTint && fcEnabled && fcCustomGlowEnabled;
+        int lockGlowColor;
+        float lockGlowAlpha;
+        boolean explicitCustomGlow;
+        if (nonMediaTint) {
+            lockGlowColor = 0xFFE9546B;
+            lockGlowAlpha = 1.0f;
+            explicitCustomGlow = false;
+        } else if (useCustomGlow) {
+            lockGlowColor = fcCustomGlowColor;
+            lockGlowAlpha = ConfigStore.colorAlphaScale(fcCustomGlowColor);
+            explicitCustomGlow = true;
+        } else {
+            lockGlowColor = 0xFFFFFFFF;
+            lockGlowAlpha = 1.0f;
+            explicitCustomGlow = false;
+        }
+        drawBottomBrightening(canvas, capsuleRect, capsuleClip, capR, singleGlowBoostPct, singleGlowChromaPct,
+                lockGlowColor, lockGlowAlpha, explicitCustomGlow);
 
         float dotSize = 18f * d;
         subRect.set(capsuleRect.left + 8f * d, capsuleRect.centerY() - dotSize * 0.5f,
@@ -334,7 +354,7 @@ public class FluidCloudPreviewView extends View {
         canvas.drawRoundRect(rect, radius, radius, paint);
 
         // Color & opacity body
-        int bodyAlpha = Math.max(0, Math.min(242, Math.round(218f * opacity)));
+        int bodyAlpha = Math.max(0, Math.min(235, Math.round(235f * opacity)));
         paint.setColor(Color.argb(bodyAlpha, r, g, b));
         canvas.drawRoundRect(rect, radius, radius, paint);
 
@@ -361,20 +381,29 @@ public class FluidCloudPreviewView extends View {
 
     private void drawBottomBrightening(Canvas canvas, RectF rect, Path clip, float radius,
                                        int glowBoostPct, int glowChromaPct, int accentColor) {
-        if (rect.width() <= 0f || rect.height() <= 0f) {
+        drawBottomBrightening(canvas, rect, clip, radius, glowBoostPct, glowChromaPct, accentColor, 1.0f, false);
+    }
+
+    private void drawBottomBrightening(Canvas canvas, RectF rect, Path clip, float radius,
+                                       int glowBoostPct, int glowChromaPct, int accentColor,
+                                       float alphaScale, boolean explicitCustomColor) {
+        if (rect.width() <= 0f || rect.height() <= 0f || alphaScale <= 0.001f) {
             return;
         }
+        float clampedAlphaScale = Math.max(0f, Math.min(1f, alphaScale));
         float dp = getResources().getDisplayMetrics().density;
         float brightBoost = Math.max(0f, Math.min(1f, glowBoostPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW));
         float chromaBoost = Math.max(0f, Math.min(1f, glowChromaPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW_CHROMA));
-        int sheenPeakA = clampByte(28f + 98f * (float) Math.pow(brightBoost, 0.80));
-        int rimA = clampByte(56f + 124f * (float) Math.pow(brightBoost, 0.75));
+        int sheenPeakA = clampByte((28f + 98f * (float) Math.pow(brightBoost, 0.80)) * clampedAlphaScale);
+        int rimA = clampByte((56f + 124f * (float) Math.pow(brightBoost, 0.75)) * clampedAlphaScale);
         if (sheenPeakA <= 0 && rimA <= 0) {
             return;
         }
         float colorMix = ((accentColor & 0x00FFFFFF) == 0x00FFFFFF)
                 ? 0f
-                : (0.22f + 0.72f * (float) Math.pow(chromaBoost, 1.05));
+                : (explicitCustomColor
+                        ? (0.68f + 0.32f * (float) Math.pow(chromaBoost, 1.05))
+                        : (0.22f + 0.72f * (float) Math.pow(chromaBoost, 1.05)));
         int hiR = clampByte(255f + (Color.red(accentColor) - 255f) * colorMix);
         int hiG = clampByte(255f + (Color.green(accentColor) - 255f) * colorMix);
         int hiB = clampByte(255f + (Color.blue(accentColor) - 255f) * colorMix);

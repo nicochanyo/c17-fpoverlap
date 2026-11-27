@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">Module Active</string>
     <string name="status_title_inactive">Module Inactive</string>
-    <string name="status_sub_active">v1.1.2 (1102) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.3 (1103) · com.android.systemui</string>
     <string name="status_sub_inactive">Enable System UI in LSPosed and reboot</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.1.2</string>
+    <string name="chip_version">v1.1.3</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -77,7 +77,7 @@
     <string name="pref_fc_remove_island_mask_title">Remove Expanded Card Mask</string>
     <string name="pref_fc_remove_island_mask_summary">Remove black gradient mask on top expanded card (disables mask tint here)</string>
     <string name="pref_fc_match_card_title">Remove Lockscreen Mask</string>
-    <string name="pref_fc_match_card_summary">Remove black gradient mask on lockscreen capsule &amp; card (disables mask tint here)</string>
+    <string name="pref_fc_match_card_summary">Remove black gradient mask on lockscreen Fluid Cloud cards (disables mask tint here)</string>
     <string name="pref_fc_remove_shade_mask_title">Remove Shade Mask</string>
     <string name="pref_fc_remove_shade_mask_summary">Remove black gradient mask on notification shade cards (disables mask tint here)</string>
     <string name="pref_fc_mask_follow_media_title">Tint Mask with Media Color</string>
@@ -138,6 +138,8 @@
     <string name="pref_fc_custom_color_summary">Non-media only; yields to media</string>
     <string name="pref_fc_custom_mask_color_title">Custom Gradient Mask Color</string>
     <string name="pref_fc_custom_mask_color_summary">Non-media masks; yields to media</string>
+    <string name="pref_fc_custom_glow_color_title">Custom Highlight Color</string>
+    <string name="pref_fc_custom_glow_color_summary">Non-media highlight; yields to media</string>
     <string name="label_stock_tint">Default</string>
     <string name="label_color_value">Color Value</string>
     <string name="dialog_hex_input_hint">Enter 6-digit HEX code (e.g. 4FC3F7)</string>
@@ -196,6 +198,8 @@
     <string name="btn_update_open_repo">Open Repo</string>
     <string name="dialog_changelog_title">Changelog</string>
     <string name="btn_close">Close</string>
+    <string name="changelog_v113_title">v1.1.3</string>
+    <string name="changelog_v113_body" formatted="false">• Added an independent Custom Highlight Color picker with ARGB opacity slider (applies to non-media highlights; yields to media when Follow Media is active)\n• Fixed custom card background colors rendering darker than configured by switching custom blur tinting to direct color mix and calibrating expanded &amp; lockscreen opacity ceilings\n• Fixed custom card background tint not covering some non-standard expanded Fluid Cloud cards (such as installer progress cards) where the gradient mask already tinted\n• Fixed custom card background color unintentionally affecting highlight colors on cards such as the Flashlight card\n• Fixed custom card background color affecting the small capsule under Music Lockscreen\n• Refined card-to-capsule collapse color transition by keeping the smooth initial blend while accelerating tail darkening into the black capsule\n• Fixed gradient mask and bottom highlight misalignment when swiping cards horizontally on lockscreen and shade\n• Fixed sporadic background color corruption affecting lockscreen widgets and bottom shortcut buttons</string>
     <string name="changelog_v112_title">v1.1.2</string>
     <string name="changelog_v112_body" formatted="false">• Scoped custom colors to non-media cards only; media cards (and non-media cards with Follow Media enabled while media is active) yield to album art without tint clashes\n• Added an independent Custom Gradient Mask Color picker alongside Custom Card Color, with ARGB opacity sliders for both\n• Automatically opens release notes on first launch after updating to a new version</string>
     <string name="changelog_v111_title">v1.1.1</string>

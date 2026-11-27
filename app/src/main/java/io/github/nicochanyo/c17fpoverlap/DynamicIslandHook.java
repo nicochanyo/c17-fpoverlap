@@ -14,6 +14,7 @@ import android.graphics.RuntimeShader;
 import android.graphics.Shader;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.DrawableWrapper;
 import android.graphics.drawable.LayerDrawable;
 import android.os.Build;
 import android.os.Handler;
@@ -74,8 +75,12 @@ public final class DynamicIslandHook {
             "com.oplus.systemui.plugins.seedling.capsule.ui.view.CapsuleContainer";
     private static final String CLS_CARD_CONTAINER =
             "com.oplus.systemui.plugins.seedling.card.ui.view.CardContainer";
+    private static final String CLS_CARD_VIEW =
+            "com.oplus.systemui.plugins.seedling.card.ui.view.CardView";
     private static final String MEDIA_SERVICE_ID = "268452006";
     private static final String EXTRA_DEBUG_LIVE_ALERT = "c17.debug.live_alert";
+    private static final int BLUR_BLEND_MODE_COLORMIX = 1;
+    private static final int BLUR_BLEND_MODE_GLOW_OVERLAY = 4;
 
     private static final Map<ClassLoader, Boolean> HOOKED_LOADERS =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -84,10 +89,22 @@ public final class DynamicIslandHook {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Object> VIEW_TO_VRM =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Drawable, View> BBD_TO_VIEW =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Boolean> TAGGED_ISLAND_VIEW =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Long> LAST_CARD_DISCOVERY_MS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Drawable, Long> LAST_GRAD_BLUR_KEY =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Class<?>, Boolean> HOOKED_VRM_CLASSES =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Class<?>, Boolean> HOOKED_BBD_EXT_CLASSES =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Class<?>, Boolean> HOOKED_BBD_CLASSES =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
-    // Keyed directly by ViewRootManager (vrm) or mutable parameter objects with identity hashing
+    // Keyed directly by ViewRootManager (vrm) / BackgroundBlurDrawable (bbd) or mutable parameter objects with identity hashing
     private static final WeakIdentityMap<Object, Integer> ORIG_RADIUS =
             new WeakIdentityMap<>();
     private static final WeakIdentityMap<Object, Object> LAST_BLUR_PARAM =
@@ -97,6 +114,14 @@ public final class DynamicIslandHook {
     private static final WeakIdentityMap<Object, float[][]> ORIG_PARAM_COLORS =
             new WeakIdentityMap<>();
     private static final WeakIdentityMap<Object, Integer> LAST_VRM_HASH =
+            new WeakIdentityMap<>();
+    private static final WeakIdentityMap<Object, Object> BBD_TO_VRM =
+            new WeakIdentityMap<>();
+    private static final WeakIdentityMap<Object, Drawable> EXT_TO_BBD =
+            new WeakIdentityMap<>();
+    private static final WeakIdentityMap<Object, Integer> ORIG_BBD_COLOR =
+            new WeakIdentityMap<>();
+    private static final WeakIdentityMap<Object, Integer> LAST_BBD_COLOR_HASH =
             new WeakIdentityMap<>();
 
     private static final Map<Drawable, int[]> ORIG_GRAD_STOPS =
@@ -146,6 +171,9 @@ public final class DynamicIslandHook {
     private static volatile int sSeedlingBaseBlurRadius = -1;
     private static volatile Method sVrmSetBlurParamsM;
     private static volatile Method sVrmSetBlurRadiusM;
+    private static volatile Method sBbdExtSetBlurParamsM;
+    private static volatile Method sBbdSetBlurRadiusM;
+    private static volatile Method sBbdSetColorM;
     private static final Map<View, RowBgCache> ROW_BG_CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Object MISSING = new Object();
@@ -156,6 +184,12 @@ public final class DynamicIslandHook {
     private static final ConcurrentHashMap<Class<?>, ConcurrentHashMap<String, Object>> PARAM_METHOD_CACHE =
             new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Class<?>, Object> GRAD_REF_CACHE =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, Object> VRM_FIELD_CACHE =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, Object> VIEW_FIELD_CACHE =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Class<?>, Object> BBD_FIELD_CACHE =
             new ConcurrentHashMap<>();
     private static volatile Field sFldLightName;
     private static volatile Field sFldLightParams;
@@ -171,6 +205,8 @@ public final class DynamicIslandHook {
     private static final int[] EDGE_RESTORE_IDX = {0, 1, 2, 3, 4, 5, 7, 10, 11};
 
     private static volatile boolean sLoggedFirstVrmApply;
+    private static volatile boolean sLoggedFirstVrmHookApply;
+    private static volatile boolean sLoggedFirstBbdApply;
     private static volatile boolean sLoggedAgslErr;
     private static volatile int sLatestMediaCoverColor;
     private static volatile int sLastMediaRawRgb;
@@ -434,9 +470,11 @@ public final class DynamicIslandHook {
 
         int count = 0;
         if (hookBackgroundHelper(pluginCl, cfg)) count++;
+        if (hookBlurBackends(pluginCl, cfg)) count++;
         if (hookGradientOverlayDrawable(pluginCl, cfg)) count++;
         if (hookCardBackgroundView(pluginCl, cfg)) count++;
         if (hookCardGradientOverlayView(pluginCl, cfg)) count++;
+        if (hookCardViewLifecycle(pluginCl, cfg)) count++;
         if (hookInstantContainer(pluginCl, cfg)) count++;
         if (hookTransitionAnimatorFragments(pluginCl, cfg)) count++;
         if (hookMultiLightDrawable(pluginCl, cfg)) count++;
@@ -446,7 +484,7 @@ public final class DynamicIslandHook {
         if (hookLightEffectManager(pluginCl, cfg)) count++;
         if (hookLiveAlertDebugWhitelist(pluginCl, cfg)) count++;
         if (hookTopFluidCloudContainers(pluginCl, cfg)) count++;
-        cfg.note("DynamicIsland plugin hooks installed: " + count + "/13");
+        cfg.note("DynamicIsland plugin hooks installed: " + count + "/15");
     }
 
     private static boolean hookTopFluidCloudContainers(ClassLoader pluginCl, final ConfigStore.HookConfig cfg) {
@@ -641,6 +679,7 @@ public final class DynamicIslandHook {
             sTopMediaFluidCloudActive = active;
             sMediaColorVersion++;
             LAST_GRAD_FAST_KEY.clear();
+            LAST_GRAD_BLUR_KEY.clear();
             LAST_BG_VIEW_FAST_HASH.clear();
             ConfigStore.HookConfig eff = cfg != null ? cfg : sLastHookConfig;
             if (eff != null) {
@@ -697,7 +736,7 @@ public final class DynamicIslandHook {
                 continue;
             }
             View c = readViewField(m0, "c");
-            if (c != null && c.isAttachedToWindow() && c.getVisibility() == View.VISIBLE) {
+            if (c != null && c.isAttachedToWindow() && c.isShown()) {
                 return true;
             }
         }
@@ -713,32 +752,12 @@ public final class DynamicIslandHook {
                 continue;
             }
             View mediaBg = readViewField(sec, "s");
-            if (mediaBg == null || !mediaBg.isAttachedToWindow() || mediaBg.getVisibility() != View.VISIBLE) {
+            if (mediaBg == null || !mediaBg.isAttachedToWindow() || !mediaBg.isShown()) {
                 continue;
             }
             Object lightObj = readObjectField(mediaBg, "F");
             Drawable lightDr = lightObj instanceof Drawable ? (Drawable) lightObj : null;
             if ("MP_Notification".equals(resolveMediaSectionName(sec, mediaBg, lightDr))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    static boolean hasActiveLockMiniMedia() {
-        List<Object> minis;
-        synchronized (ACTIVE_MINI_SECTIONS) {
-            minis = ACTIVE_MINI_SECTIONS.isEmpty()
-                    ? Collections.emptyList()
-                    : new ArrayList<>(ACTIVE_MINI_SECTIONS.keySet());
-        }
-        for (int i = 0, n = minis.size(); i < n; i++) {
-            Object m0 = minis.get(i);
-            if (m0 == null) {
-                continue;
-            }
-            View c = readViewField(m0, "c");
-            if (c != null && c.isAttachedToWindow() && c.getVisibility() == View.VISIBLE) {
                 return true;
             }
         }
@@ -776,8 +795,7 @@ public final class DynamicIslandHook {
                 continue;
             }
             View c = readViewField(m0, "c");
-            if (c != null && c.isAttachedToWindow() && c.getVisibility() == View.VISIBLE
-                    && isDescendantOf(c, root)) {
+            if (isVisibleWithin(c, root) && isDescendantOf(c, root)) {
                 return true;
             }
         }
@@ -793,8 +811,7 @@ public final class DynamicIslandHook {
                 continue;
             }
             View s = readViewField(sec, "s");
-            if (s != null && s.isAttachedToWindow() && s.getVisibility() == View.VISIBLE
-                    && isDescendantOf(s, root)) {
+            if (isVisibleWithin(s, root) && isDescendantOf(s, root)) {
                 return true;
             }
         }
@@ -1105,6 +1122,7 @@ public final class DynamicIslandHook {
             public void run() {
                 sMediaColorRefreshPending = false;
                 LAST_GRAD_FAST_KEY.clear();
+                LAST_GRAD_BLUR_KEY.clear();
                 LAST_BG_VIEW_FAST_HASH.clear();
                 boolean fcOn = cfg.isFcEnabled();
                 if (!fcOn && !cfg.isLockNotifGlowFollowMedia()) {
@@ -1149,6 +1167,20 @@ public final class DynamicIslandHook {
                             View vrmHost = vrm != null ? VRM_TO_VIEW.get(vrm) : null;
                             if (vrm != null && vrmHost != null && vrmHost.isAttachedToWindow()) {
                                 ensureVrmSynced(vrm, cfg);
+                            }
+                        }
+                        List<Map.Entry<Drawable, View>> bbds;
+                        synchronized (BBD_TO_VIEW) {
+                            bbds = BBD_TO_VIEW.isEmpty()
+                                    ? Collections.<Map.Entry<Drawable, View>>emptyList()
+                                    : new ArrayList<>(BBD_TO_VIEW.entrySet());
+                        }
+                        for (int i = 0, n = bbds.size(); i < n; i++) {
+                            Map.Entry<Drawable, View> e = bbds.get(i);
+                            Drawable bbd = e.getKey();
+                            View bbdHost = e.getValue();
+                            if (bbd != null && bbdHost != null && bbdHost.isAttachedToWindow()) {
+                                ensureDirectBbdSynced(bbd, bbdHost, cfg);
                             }
                         }
                     }
@@ -1332,38 +1364,31 @@ public final class DynamicIslandHook {
                                     probeLockscreenHostFlags(hostView, bl);
                                     bl.customRowProbed = true;
                                 }
-                                if (bl.insideCapsuleItem) {
-                                    isLockscreenCard = true;
-                                    inShade = false;
-                                } else if (bl.insideCustomRow) {
+                                if (bl.insideCustomRow && !bl.insideCapsuleItem) {
                                     isLockscreenCard = FluidCloudHook.isCurrentlyOnLockscreen();
                                     inShade = !isLockscreenCard;
                                 }
                             }
-                            if (isLockscreenCard && !bl.registeredActiveLock) {
-                                ACTIVE_LOCK_LIGHT_DRAWABLES.put(lightDr, Boolean.TRUE);
-                                bl.registeredActiveLock = true;
-                            }
-                            float aodProg = (isLockscreenCard && cfg.isFcEnabled())
-                                    ? FluidCloudHook.getCurrentAodProgress() : 0.0f;
-                            boolean hostFadedByViewAlpha = bl.hostIsPageBgView
-                                    && hostView != null
-                                    && hostView.getAlpha() < 0.995f;
-                            float aodLightScale = 1.0f;
-                            if (aodProg > 0.001f && !hostFadedByViewAlpha) {
-                                aodLightScale = bl.insideCapsuleItem
+                            if (bl.insideCapsuleItem || "MP_MiniCard".equals(name)) {
+                                if (!bl.registeredActiveLock) {
+                                    ACTIVE_LOCK_LIGHT_DRAWABLES.put(lightDr, Boolean.TRUE);
+                                    bl.registeredActiveLock = true;
+                                }
+                                float aodProg = cfg.isFcEnabled() ? FluidCloudHook.getCurrentAodProgress() : 0.0f;
+                                boolean hostFadedByViewAlpha = bl.hostIsPageBgView
+                                        && hostView != null
+                                        && hostView.getAlpha() < 0.995f;
+                                float aodLightScale = (aodProg > 0.001f && !hostFadedByViewAlpha)
                                         ? clamp01((float) Math.pow(Math.max(0.0f, 1.0f - aodProg), 1.6))
-                                        : clamp01(1.0f - aodProg);
-                            }
-
-                            syncLightBaseline(bl, shadowArr, edgeArr);
-                            if ("MP_MiniCard".equals(name)) {
+                                        : 1.0f;
+                                syncLightBaseline(bl, shadowArr, edgeArr);
                                 bl.baselineDirty = false;
-                                if (!isLockscreenCard || !cfg.isFcEnabled() || aodLightScale >= 0.999f) {
+                                if (!cfg.isFcEnabled() || aodLightScale >= 0.999f) {
                                     if (bl.boosted) {
                                         restoreLightBaseline(params, shadowArr, edgeArr, bl);
                                         bl.boosted = false;
                                     }
+                                    bl.lastAppliedKey = 0;
                                     return;
                                 }
                                 if (uShadow > 0.5f && shadowArr != null && shadowArr.length >= 14 && bl.baseShadow != null) {
@@ -1381,6 +1406,21 @@ public final class DynamicIslandHook {
                                 bl.boosted = true;
                                 return;
                             }
+                            if (isLockscreenCard && !bl.registeredActiveLock) {
+                                ACTIVE_LOCK_LIGHT_DRAWABLES.put(lightDr, Boolean.TRUE);
+                                bl.registeredActiveLock = true;
+                            }
+                            float aodProg = (isLockscreenCard && cfg.isFcEnabled())
+                                    ? FluidCloudHook.getCurrentAodProgress() : 0.0f;
+                            boolean hostFadedByViewAlpha = bl.hostIsPageBgView
+                                    && hostView != null
+                                    && hostView.getAlpha() < 0.995f;
+                            float aodLightScale = 1.0f;
+                            if (aodProg > 0.001f && !hostFadedByViewAlpha) {
+                                aodLightScale = clamp01(1.0f - aodProg);
+                            }
+
+                            syncLightBaseline(bl, shadowArr, edgeArr);
 
                             boolean isMediaLight = isMediaLightName(name);
                             boolean wasBaselineDirty = bl.baselineDirty;
@@ -1419,6 +1459,8 @@ public final class DynamicIslandHook {
                                     ? hostView.getResources().getDisplayMetrics().density
                                     : 3.0f;
                             boolean isLargeMedia = isLargeMediaCardHeight(isMediaLight, effH, dp);
+                            boolean isWideLight = isLargeMedia
+                                    || (bl.baseEdge != null && bl.baseEdge.length > 7 && bl.baseEdge[7] >= 10.0f);
                             boolean surfaceHasMedia = false;
                             if (!isMediaLight && cfg.isFcEnabled() && cfg.isFcNonMediaMaskEnabled()) {
                                 if (isLockscreenCard) {
@@ -1433,6 +1475,15 @@ public final class DynamicIslandHook {
                             boolean wantNonMediaTint = !isMediaLight
                                     && surfaceHasMedia
                                     && mediaTintArgb != 0;
+                            boolean wantCustomGlowTint = !isMediaLight
+                                    && !wantNonMediaTint
+                                    && !(cfg.isFcNonMediaMaskEnabled() && surfaceHasMedia)
+                                    && cfg.isFcEnabled()
+                                    && cfg.isFcCustomGlowEnabled();
+                            int customGlowArgb = wantCustomGlowTint ? cfg.getFcCustomGlowColor() : 0;
+                            float customGlowAlpha = wantCustomGlowTint
+                                    ? ConfigStore.colorAlphaScale(customGlowArgb)
+                                    : 1.0f;
 
                             int brightPct = cfg.isFcEnabled()
                                     ? (isLargeMedia ? cfg.getFcBottomGlowInt() : cfg.getFcSingleGlowInt())
@@ -1440,7 +1491,8 @@ public final class DynamicIslandHook {
                             int chromaPct = cfg.isFcEnabled()
                                     ? (isLargeMedia ? cfg.getFcBottomGlowChromaInt() : cfg.getFcSingleGlowChromaInt())
                                     : 0;
-                            if (inShade || (!wantNonMediaTint && brightPct <= 0 && chromaPct <= 0 && aodLightScale >= 0.999f)) {
+                            if (inShade || (!wantNonMediaTint && !wantCustomGlowTint
+                                    && brightPct <= 0 && chromaPct <= 0 && aodLightScale >= 0.999f)) {
                                 if (bl.boosted) {
                                     restoreLightBaseline(params, shadowArr, edgeArr, bl);
                                     bl.boosted = false;
@@ -1452,8 +1504,9 @@ public final class DynamicIslandHook {
                             int appliedKey = cfg.getFcVersion();
                             appliedKey = appliedKey * 31 + sMediaColorVersion;
                             appliedKey = appliedKey * 31 + Math.round(aodLightScale * 255f);
-                            appliedKey = appliedKey * 31 + (wantNonMediaTint ? 1 : 0);
-                            appliedKey = appliedKey * 31 + (isLargeMedia ? 1 : 0);
+                            appliedKey = appliedKey * 31 + ((wantNonMediaTint ? 1 : 0) | (wantCustomGlowTint ? 2 : 0));
+                            appliedKey = appliedKey * 31 + customGlowArgb;
+                            appliedKey = appliedKey * 31 + ((isLargeMedia ? 2 : 0) | (isWideLight ? 1 : 0));
                             appliedKey = appliedKey * 31 + (uShadow > 0.5f ? 2 : 0) + (uEdge > 0.5f ? 1 : 0);
                             if (!wasBaselineDirty && bl.boosted && bl.lastAppliedKey == appliedKey) {
                                 return;
@@ -1461,6 +1514,7 @@ public final class DynamicIslandHook {
 
                             float brightBoost = clamp01(brightPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW);
                             float chromaBoost = clamp01(chromaPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW_CHROMA);
+                            float effAlphaScale = aodLightScale * customGlowAlpha;
                             float[] rgb = TL_LIGHT_RGB.get();
                             if (rgb == null) {
                                 rgb = new float[3];
@@ -1469,6 +1523,14 @@ public final class DynamicIslandHook {
                             if (uShadow > 0.5f && shadowArr != null && shadowArr.length >= 14 && bl.baseShadow != null) {
                                 if (wantNonMediaTint) {
                                     boostHighlightChromaArgb(mediaTintArgb, chromaBoost, brightBoost, rgb);
+                                    shadowArr[2] = rgb[0];
+                                    shadowArr[3] = rgb[1];
+                                    shadowArr[4] = rgb[2];
+                                    shadowArr[11] = rgb[0];
+                                    shadowArr[12] = rgb[1];
+                                    shadowArr[13] = rgb[2];
+                                } else if (wantCustomGlowTint) {
+                                    boostHighlightChromaArgb(customGlowArgb, chromaBoost, brightBoost, rgb);
                                     shadowArr[2] = rgb[0];
                                     shadowArr[3] = rgb[1];
                                     shadowArr[4] = rgb[2];
@@ -1488,19 +1550,30 @@ public final class DynamicIslandHook {
                                     shadowArr[13] = rgb[2];
                                 }
                                 if (brightBoost > 0.001f && bl.baseShadow[0] > 0.001f) {
+                                    float shadowTarget = isWideLight ? 0.52f : 0.85f;
+                                    double shadowPow = isWideLight ? 0.95 : 0.80;
+                                    float effShadowTarget = Math.max(bl.baseShadow[0], shadowTarget);
                                     shadowArr[0] = clamp01((bl.baseShadow[0]
-                                            + (0.85f - bl.baseShadow[0]) * (float) Math.pow(brightBoost, 0.80))
-                                            * aodLightScale);
+                                            + (effShadowTarget - bl.baseShadow[0]) * (float) Math.pow(brightBoost, shadowPow))
+                                            * effAlphaScale);
                                 } else {
-                                    shadowArr[0] = clamp01(bl.baseShadow[0] * aodLightScale);
+                                    shadowArr[0] = clamp01(bl.baseShadow[0] * effAlphaScale);
                                 }
-                                shadowArr[1] = clamp01(bl.baseShadow[1] * aodLightScale);
+                                shadowArr[1] = clamp01(bl.baseShadow[1] * effAlphaScale);
                                 setParamDirtyFlag(params, true, true);
                                 bl.lastShadow = copyArrayInPlace(shadowArr, bl.lastShadow);
                             }
                             if (uEdge > 0.5f && edgeArr != null && edgeArr.length >= 12 && bl.baseEdge != null) {
                                 if (wantNonMediaTint) {
                                     boostHighlightChromaArgb(mediaTintArgb, chromaBoost, brightBoost, rgb);
+                                    edgeArr[0] = rgb[0];
+                                    edgeArr[1] = rgb[1];
+                                    edgeArr[2] = rgb[2];
+                                    edgeArr[3] = rgb[0];
+                                    edgeArr[4] = rgb[1];
+                                    edgeArr[5] = rgb[2];
+                                } else if (wantCustomGlowTint) {
+                                    boostHighlightChromaArgb(customGlowArgb, chromaBoost, brightBoost, rgb);
                                     edgeArr[0] = rgb[0];
                                     edgeArr[1] = rgb[1];
                                     edgeArr[2] = rgb[2];
@@ -1520,14 +1593,18 @@ public final class DynamicIslandHook {
                                     edgeArr[5] = rgb[2];
                                 }
                                 if (brightBoost > 0.001f && bl.baseEdge[10] > 0.001f) {
+                                    float edgeTarget = isWideLight ? 0.66f : 1.00f;
+                                    double edgePow = isWideLight ? 0.90 : 0.75;
+                                    float effEdgeTarget = Math.max(bl.baseEdge[10], edgeTarget);
                                     edgeArr[10] = clamp01((bl.baseEdge[10]
-                                            + (1.00f - bl.baseEdge[10]) * (float) Math.pow(brightBoost, 0.75))
-                                            * aodLightScale);
+                                            + (effEdgeTarget - bl.baseEdge[10]) * (float) Math.pow(brightBoost, edgePow))
+                                            * effAlphaScale);
                                 } else {
-                                    edgeArr[10] = clamp01(bl.baseEdge[10] * aodLightScale);
+                                    edgeArr[10] = clamp01(bl.baseEdge[10] * effAlphaScale);
                                 }
-                                edgeArr[11] = clamp01(bl.baseEdge[11] * aodLightScale);
-                                edgeArr[7] = bl.baseEdge[7] * (1.0f + 0.80f * brightBoost);
+                                edgeArr[11] = clamp01(bl.baseEdge[11] * effAlphaScale);
+                                float fadeWidthGain = isWideLight ? 0.16f : 0.80f;
+                                edgeArr[7] = bl.baseEdge[7] * (1.0f + fadeWidthGain * brightBoost);
                                 setParamDirtyFlag(params, false, true);
                                 bl.lastEdge = copyArrayInPlace(edgeArr, bl.lastEdge);
                             }
@@ -2069,9 +2146,9 @@ public final class DynamicIslandHook {
                                 } else if (startA < endA) {
                                     if (cfg.isFcEnabled()) {
                                         if (startA <= 0.05f && endA >= 0.95f) {
-                                            param.args[3] = 360L;
+                                            param.args[3] = 300L;
                                         } else {
-                                            param.args[3] = Math.max(origDur, 240L);
+                                            param.args[3] = Math.max(origDur, 220L);
                                         }
                                     }
                                 }
@@ -2097,7 +2174,7 @@ public final class DynamicIslandHook {
                                     fInterp.setAccessible(true);
                                     PathInterpolator interp = (startA > endA)
                                             ? new PathInterpolator(0.15f, 0.0f, 0.45f, 1.0f)
-                                            : new PathInterpolator(0.55f, 0.0f, 0.85f, 1.0f);
+                                            : new PathInterpolator(0.62f, 0.0f, 0.78f, 1.0f);
                                     fInterp.set(param.thisObject, interp);
                                 }
                             } catch (Throwable ignored) {
@@ -2133,6 +2210,7 @@ public final class DynamicIslandHook {
                             final ColorDrawable cd = (ColorDrawable) drawableObj;
                             final float startA = readFloatField(param.thisObject, "f", 0.0f);
                             final float endA = readFloatField(param.thisObject, "g", 0.0f);
+                            final boolean collapsing = endA > startA;
                             ValueAnimator va = (ValueAnimator) res;
                             va.removeAllUpdateListeners();
                             va.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
@@ -2145,8 +2223,15 @@ public final class DynamicIslandHook {
                                         cd.setAlpha(Math.max(0, Math.min(255, Math.round(255.0f * t))));
                                         return;
                                     }
-                                    float alphaCurve = (float) Math.pow(t, 1.25);
-                                    float colorMix = (float) Math.pow(1.0f - t, 1.15);
+                                    float alphaCurve;
+                                    float colorMix;
+                                    if (collapsing) {
+                                        alphaCurve = (float) Math.pow(clamp01(t / 0.88f), 1.25);
+                                        colorMix = (float) Math.pow(clamp01(1.0f - t / 0.82f), 1.6);
+                                    } else {
+                                        alphaCurve = (float) Math.pow(t, 1.25);
+                                        colorMix = (float) Math.pow(1.0f - t, 1.15);
+                                    }
                                     int outAlpha = Math.max(0, Math.min(255, Math.round(255.0f * alphaCurve)));
                                     boolean useCustom = cfg.isFcColorEnabled()
                                             && !shouldSuppressTopCustomColor(resolveDrawableHostView(cd), cfg);
@@ -2270,6 +2355,555 @@ public final class DynamicIslandHook {
         }
     }
 
+    private static void invokeBbdExtSetBlurParams(Object ext, Object blurParam) {
+        if (ext == null || blurParam == null) {
+            return;
+        }
+        try {
+            Method m = sBbdExtSetBlurParamsM;
+            if (m == null || !m.getDeclaringClass().isInstance(ext)) {
+                m = findMethod(ext.getClass(), "setBlurParams", blurParam.getClass());
+                sBbdExtSetBlurParamsM = m;
+            }
+            if (m != null) {
+                m.invoke(ext, blurParam);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void invokeBbdSetBlurRadius(Object bbd, int radius) {
+        if (bbd == null) {
+            return;
+        }
+        try {
+            Method m = sBbdSetBlurRadiusM;
+            if (m == null || !m.getDeclaringClass().isInstance(bbd)) {
+                m = findMethod(bbd.getClass(), "setBlurRadius", int.class);
+                sBbdSetBlurRadiusM = m;
+            }
+            if (m != null) {
+                m.invoke(bbd, radius);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void invokeBbdSetColor(Object bbd, int color) {
+        if (bbd == null) {
+            return;
+        }
+        try {
+            Method m = sBbdSetColorM;
+            if (m == null || !m.getDeclaringClass().isInstance(bbd)) {
+                m = findMethod(bbd.getClass(), "setColor", int.class);
+                sBbdSetColorM = m;
+            }
+            if (m != null) {
+                m.invoke(bbd, color);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static boolean hookBlurBackends(ClassLoader pluginCl, final ConfigStore.HookConfig cfg) {
+        boolean any = false;
+        Class<?> vrmCls = findVrmClassFromPlugin(pluginCl);
+        if (vrmCls != null) {
+            any |= hookViewRootManagerClass(vrmCls, cfg);
+        }
+        Class<?> extCls = XposedCompat.findClassIfExists(
+                "com.android.internal.graphics.drawable.BackgroundBlurDrawableExtImpl", pluginCl);
+        if (extCls != null) {
+            any |= hookBackgroundBlurExtClass(extCls, cfg);
+        }
+        Class<?> bbdCls = XposedCompat.findClassIfExists(
+                "com.android.internal.graphics.drawable.BackgroundBlurDrawable", pluginCl);
+        if (bbdCls != null) {
+            any |= hookBackgroundBlurDrawableClass(bbdCls, cfg);
+        }
+        return any;
+    }
+
+    private static Class<?> findVrmClassFromPlugin(ClassLoader pluginCl) {
+        try {
+            Class<?> helperCls = XposedCompat.findClassIfExists(CLS_BG_HELPER, pluginCl);
+            if (helperCls != null) {
+                for (Method m : helperCls.getDeclaredMethods()) {
+                    if ("b".equals(m.getName()) && m.getParameterTypes().length == 3) {
+                        Class<?>[] pts = m.getParameterTypes();
+                        if (View.class.isAssignableFrom(pts[0]) && pts[1] != null
+                                && pts[1].getName().endsWith(".ViewRootManager")) {
+                            return pts[1];
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        String[] holderNames = new String[]{CLS_CARD_BG, CLS_INSTANT};
+        for (String cn : holderNames) {
+            try {
+                Class<?> holderCls = XposedCompat.findClassIfExists(cn, pluginCl);
+                if (holderCls == null) {
+                    continue;
+                }
+                for (Field f : holderCls.getDeclaredFields()) {
+                    if (!Modifier.isStatic(f.getModifiers())
+                            && f.getType().getName().endsWith(".ViewRootManager")) {
+                        return f.getType();
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        Class<?> direct = XposedCompat.findClassIfExists("com.oplus.view.ViewRootManager", pluginCl);
+        if (direct != null) {
+            return direct;
+        }
+        return XposedCompat.findClassIfExists("com.oplus.os.ViewRootManager", pluginCl);
+    }
+
+    private static boolean isInsideExcludedLockOrCapsuleView(View v) {
+        View cur = v;
+        for (int depth = 0; depth < 24 && cur != null; depth++) {
+            String cn = cur.getClass().getName();
+            if (cn.contains(".CapsuleContainer")
+                    || cn.contains(".CapsuleItemView")
+                    || cn.contains(".CapsuleEarView")
+                    || cn.contains(".OplusCustomRow")
+                    || cn.contains(".ExpandableNotificationRow")
+                    || cn.contains(".OplusMediaCarouselView")
+                    || cn.contains("KeyguardBottomArea")
+                    || cn.contains("KeyguardStyle")
+                    || cn.contains("KeyguardWidget")
+                    || cn.startsWith("com.oplus.systemui.keyguard.")
+                    || cn.startsWith("com.oplus.keyguard.")) {
+                return true;
+            }
+            ViewParent p = cur.getParent();
+            cur = p instanceof View ? (View) p : null;
+        }
+        return false;
+    }
+
+    private static boolean isSeedlingCardView(View v) {
+        if (v == null || isInsideExcludedLockOrCapsuleView(v)) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(TAGGED_ISLAND_VIEW.get(v))) {
+            return true;
+        }
+        View cur = v;
+        for (int depth = 0; depth < 18 && cur != null; depth++) {
+            String cn = cur.getClass().getName();
+            if (CLS_CARD_VIEW.equals(cn)
+                    || CLS_INSTANT.equals(cn)
+                    || CLS_CARD_BG.equals(cn)
+                    || CLS_CARD_GRAD.equals(cn)
+                    || CLS_CARD_CONTAINER.equals(cn)
+                    || cn.startsWith("com.oplus.systemui.plugins.seedling.card.")
+                    || (cn.startsWith("com.oplus.systemui.plugins.seedling.")
+                            && !cn.contains(".capsule."))) {
+                return true;
+            }
+            ViewParent p = cur.getParent();
+            cur = p instanceof View ? (View) p : null;
+        }
+        return false;
+    }
+
+    private static View resolveHostViewForVrm(Object vrm) {
+        if (vrm == null) {
+            return null;
+        }
+        View mapped = VRM_TO_VIEW.get(vrm);
+        if (mapped != null) {
+            return mapped;
+        }
+        Drawable bbd = extractBbdFromVrm(vrm);
+        if (bbd != null) {
+            View host = resolveDrawableHostView(bbd);
+            if (host != null) {
+                return host;
+            }
+        }
+        Class<?> cls = vrm.getClass();
+        Object cached = VIEW_FIELD_CACHE.get(cls);
+        if (cached == null) {
+            Field found = null;
+            Class<?> c = cls;
+            while (c != null && c != Object.class && found == null) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers())) {
+                        continue;
+                    }
+                    if (View.class.isAssignableFrom(f.getType())) {
+                        f.setAccessible(true);
+                        found = f;
+                        break;
+                    }
+                }
+                c = c.getSuperclass();
+            }
+            Object toStore = found != null ? found : MISSING;
+            Object prev = VIEW_FIELD_CACHE.putIfAbsent(cls, toStore);
+            cached = prev != null ? prev : toStore;
+        }
+        if (cached instanceof Field) {
+            try {
+                Object val = ((Field) cached).get(vrm);
+                if (val instanceof View) {
+                    return (View) val;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static Drawable resolveBbdFromExt(Object ext) {
+        if (ext == null) {
+            return null;
+        }
+        Drawable mapped = EXT_TO_BBD.get(ext);
+        if (mapped != null) {
+            return mapped;
+        }
+        Class<?> cls = ext.getClass();
+        Object cached = BBD_FIELD_CACHE.get(cls);
+        if (cached == null) {
+            Field found = null;
+            Class<?> c = cls;
+            while (c != null && c != Object.class && found == null) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (Modifier.isStatic(f.getModifiers())) {
+                        continue;
+                    }
+                    Class<?> ft = f.getType();
+                    if (Drawable.class.isAssignableFrom(ft)
+                            && ft.getName().endsWith("BackgroundBlurDrawable")) {
+                        f.setAccessible(true);
+                        found = f;
+                        break;
+                    }
+                }
+                c = c.getSuperclass();
+            }
+            Object toStore = found != null ? found : MISSING;
+            Object prev = BBD_FIELD_CACHE.putIfAbsent(cls, toStore);
+            cached = prev != null ? prev : toStore;
+        }
+        if (cached instanceof Field) {
+            try {
+                Object val = ((Field) cached).get(ext);
+                if (val instanceof Drawable) {
+                    Drawable bbd = (Drawable) val;
+                    EXT_TO_BBD.put(ext, bbd);
+                    return bbd;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static boolean hookViewRootManagerClass(Class<?> vrmCls, final ConfigStore.HookConfig cfg) {
+        if (vrmCls == null) {
+            return false;
+        }
+        synchronized (HOOKED_VRM_CLASSES) {
+            if (Boolean.TRUE.equals(HOOKED_VRM_CLASSES.get(vrmCls))) {
+                return true;
+            }
+            HOOKED_VRM_CLASSES.put(vrmCls, Boolean.TRUE);
+        }
+        boolean hooked = false;
+        try {
+            Class<?> c = vrmCls;
+            while (c != null && c != Object.class) {
+                for (Method m : c.getDeclaredMethods()) {
+                    if ("setBlurParams".equals(m.getName()) && m.getParameterTypes().length == 1) {
+                        XposedCompat.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                if (Boolean.TRUE.equals(IN_REAPPLY.get())
+                                        || param.thisObject == null
+                                        || param.args.length < 1
+                                        || param.args[0] == null) {
+                                    return;
+                                }
+                                Object vrm = param.thisObject;
+                                Object incoming = param.args[0];
+                                View host = resolveHostViewForVrm(vrm);
+                                if (host == null || !isSeedlingCardView(host)) {
+                                    return;
+                                }
+                                VRM_TO_VIEW.put(vrm, host);
+                                VIEW_TO_VRM.put(host, vrm);
+                                TAGGED_ISLAND_VIEW.put(host, Boolean.TRUE);
+                                Drawable bbd = extractBbdFromVrm(vrm);
+                                if (bbd != null) {
+                                    BBD_TO_VRM.put(bbd, vrm);
+                                    BBD_TO_VIEW.put(bbd, host);
+                                    Object ext = extractBbdExtImpl(bbd);
+                                    if (ext != null) {
+                                        EXT_TO_BBD.put(ext, bbd);
+                                    }
+                                }
+                                LAST_BLUR_PARAM.put(vrm, incoming);
+                                saveOrigParamFromLive(vrm, incoming);
+                                int desiredHash = computeVrmDesiredHash(host, cfg);
+                                if (cfg.isFcEnabled() && !cfg.isFcIslandStockAppearance()) {
+                                    Object cloned = cloneBlurParam(vrm, incoming);
+                                    if (cloned != null) {
+                                        applyTintToBlurParam(vrm, host, cloned, cfg);
+                                        param.args[0] = cloned;
+                                        LAST_VRM_HASH.put(vrm, desiredHash);
+                                        if (!sLoggedFirstVrmHookApply) {
+                                            sLoggedFirstVrmHookApply = true;
+                                            cfg.note("DynamicIsland: VRM.setBlurParams hook tinted color=0x"
+                                                    + Integer.toHexString(cfg.getFcColor()));
+                                        }
+                                    }
+                                } else {
+                                    LAST_VRM_HASH.put(vrm, desiredHash);
+                                }
+                            }
+                        });
+                        hooked = true;
+                    } else if ("setBlurRadius".equals(m.getName())
+                            && m.getParameterTypes().length == 1
+                            && m.getParameterTypes()[0] == int.class) {
+                        XposedCompat.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                if (Boolean.TRUE.equals(IN_REAPPLY.get())
+                                        || param.thisObject == null
+                                        || param.args.length < 1
+                                        || !(param.args[0] instanceof Integer)) {
+                                    return;
+                                }
+                                Object vrm = param.thisObject;
+                                View host = resolveHostViewForVrm(vrm);
+                                if (host == null || !isSeedlingCardView(host)) {
+                                    return;
+                                }
+                                VRM_TO_VIEW.put(vrm, host);
+                                VIEW_TO_VRM.put(host, vrm);
+                                TAGGED_ISLAND_VIEW.put(host, Boolean.TRUE);
+                                int origRad = (Integer) param.args[0];
+                                ORIG_RADIUS.put(vrm, origRad);
+                                if (cfg.isFcEnabled() && cfg.getFcBlurInt() != 100) {
+                                    param.args[0] = Math.max(0, Math.round(origRad * cfg.getFcBlurScale()));
+                                }
+                            }
+                        });
+                        hooked = true;
+                    }
+                }
+                c = c.getSuperclass();
+            }
+        } catch (Throwable t) {
+            cfg.note("DynamicIsland: VRM hook failed: " + t);
+        }
+        return hooked;
+    }
+
+    private static boolean hookBackgroundBlurExtClass(Class<?> extCls, final ConfigStore.HookConfig cfg) {
+        if (extCls == null) {
+            return false;
+        }
+        synchronized (HOOKED_BBD_EXT_CLASSES) {
+            if (Boolean.TRUE.equals(HOOKED_BBD_EXT_CLASSES.get(extCls))) {
+                return true;
+            }
+            HOOKED_BBD_EXT_CLASSES.put(extCls, Boolean.TRUE);
+        }
+        boolean hooked = false;
+        try {
+            Class<?> c = extCls;
+            while (c != null && c != Object.class) {
+                for (Method m : c.getDeclaredMethods()) {
+                    if ("setBlurParams".equals(m.getName()) && m.getParameterTypes().length == 1) {
+                        XposedCompat.hookMethod(m, new XC_MethodHook() {
+                            @Override
+                            protected void beforeHookedMethod(MethodHookParam param) {
+                                if (Boolean.TRUE.equals(IN_REAPPLY.get())
+                                        || param.thisObject == null
+                                        || param.args.length < 1
+                                        || param.args[0] == null) {
+                                    return;
+                                }
+                                Object ext = param.thisObject;
+                                Object incoming = param.args[0];
+                                Drawable bbd = resolveBbdFromExt(ext);
+                                if (bbd == null || BBD_TO_VRM.get(bbd) != null) {
+                                    return;
+                                }
+                                View host = BBD_TO_VIEW.get(bbd);
+                                if (host == null) {
+                                    host = resolveDrawableHostView(bbd);
+                                }
+                                if (host == null || !isSeedlingCardView(host)) {
+                                    return;
+                                }
+                                BBD_TO_VIEW.put(bbd, host);
+                                TAGGED_ISLAND_VIEW.put(host, Boolean.TRUE);
+                                EXT_TO_BBD.put(ext, bbd);
+                                Integer prevOrigColor = ORIG_BBD_COLOR.remove(bbd);
+                                if (prevOrigColor != null) {
+                                    LAST_BBD_COLOR_HASH.remove(bbd);
+                                    IN_REAPPLY.set(Boolean.TRUE);
+                                    try {
+                                        invokeBbdSetColor(bbd, prevOrigColor);
+                                    } finally {
+                                        IN_REAPPLY.remove();
+                                    }
+                                }
+                                LAST_BLUR_PARAM.put(bbd, incoming);
+                                saveOrigParamFromLive(bbd, incoming);
+                                int desiredHash = computeVrmDesiredHash(host, cfg);
+                                if (cfg.isFcEnabled() && !cfg.isFcIslandStockAppearance()) {
+                                    Object cloned = cloneBlurParam(bbd, incoming);
+                                    if (cloned != null) {
+                                        applyTintToBlurParam(bbd, host, cloned, cfg);
+                                        param.args[0] = cloned;
+                                        LAST_VRM_HASH.put(bbd, desiredHash);
+                                        if (!sLoggedFirstBbdApply) {
+                                            sLoggedFirstBbdApply = true;
+                                            cfg.note("DynamicIsland: BBDExt.setBlurParams hook tinted color=0x"
+                                                    + Integer.toHexString(cfg.getFcColor()));
+                                        }
+                                    }
+                                } else {
+                                    LAST_VRM_HASH.put(bbd, desiredHash);
+                                }
+                            }
+                        });
+                        hooked = true;
+                    }
+                }
+                c = c.getSuperclass();
+            }
+        } catch (Throwable t) {
+            cfg.note("DynamicIsland: BBDExt hook failed: " + t);
+        }
+        return hooked;
+    }
+
+    private static boolean hookBackgroundBlurDrawableClass(Class<?> bbdCls, final ConfigStore.HookConfig cfg) {
+        if (bbdCls == null) {
+            return false;
+        }
+        synchronized (HOOKED_BBD_CLASSES) {
+            if (Boolean.TRUE.equals(HOOKED_BBD_CLASSES.get(bbdCls))) {
+                return true;
+            }
+            HOOKED_BBD_CLASSES.put(bbdCls, Boolean.TRUE);
+        }
+        boolean hooked = false;
+        try {
+            Method mColor = findMethod(bbdCls, "setColor", int.class);
+            if (mColor != null) {
+                XposedCompat.hookMethod(mColor, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (Boolean.TRUE.equals(IN_REAPPLY.get())
+                                || !(param.thisObject instanceof Drawable)
+                                || param.args.length < 1
+                                || !(param.args[0] instanceof Integer)) {
+                            return;
+                        }
+                        Drawable bbd = (Drawable) param.thisObject;
+                        if (BBD_TO_VRM.get(bbd) != null) {
+                            return;
+                        }
+                        View host = BBD_TO_VIEW.get(bbd);
+                        if (host == null) {
+                            host = resolveDrawableHostView(bbd);
+                        }
+                        if (host == null || !isSeedlingCardView(host)) {
+                            return;
+                        }
+                        Object ext = extractBbdExtImpl(bbd);
+                        if (ext != null && readObjectField(ext, "mBlurParams") != null) {
+                            return;
+                        }
+                        BBD_TO_VIEW.put(bbd, host);
+                        TAGGED_ISLAND_VIEW.put(host, Boolean.TRUE);
+                        int origColor = (Integer) param.args[0];
+                        ORIG_BBD_COLOR.put(bbd, origColor);
+                        if (cfg.isFcEnabled() && !cfg.isFcIslandStockAppearance()) {
+                            param.args[0] = computeDirectBbdColorArgb(host, origColor, cfg);
+                            LAST_BBD_COLOR_HASH.put(bbd, computeVrmDesiredHash(host, cfg));
+                        } else {
+                            LAST_BBD_COLOR_HASH.put(bbd, computeVrmDesiredHash(host, cfg));
+                        }
+                    }
+                });
+                hooked = true;
+            }
+            Method mRadius = findMethod(bbdCls, "setBlurRadius", int.class);
+            if (mRadius != null) {
+                XposedCompat.hookMethod(mRadius, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (Boolean.TRUE.equals(IN_REAPPLY.get())
+                                || !(param.thisObject instanceof Drawable)
+                                || param.args.length < 1
+                                || !(param.args[0] instanceof Integer)) {
+                            return;
+                        }
+                        Drawable bbd = (Drawable) param.thisObject;
+                        if (BBD_TO_VRM.get(bbd) != null) {
+                            return;
+                        }
+                        View host = BBD_TO_VIEW.get(bbd);
+                        if (host == null) {
+                            host = resolveDrawableHostView(bbd);
+                        }
+                        if (host == null || !isSeedlingCardView(host)) {
+                            return;
+                        }
+                        BBD_TO_VIEW.put(bbd, host);
+                        TAGGED_ISLAND_VIEW.put(host, Boolean.TRUE);
+                        int origRad = (Integer) param.args[0];
+                        ORIG_RADIUS.put(bbd, origRad);
+                        if (cfg.isFcEnabled() && cfg.getFcBlurInt() != 100) {
+                            param.args[0] = Math.max(0, Math.round(origRad * cfg.getFcBlurScale()));
+                        }
+                    }
+                });
+                hooked = true;
+            }
+        } catch (Throwable t) {
+            cfg.note("DynamicIsland: BBD hook failed: " + t);
+        }
+        return hooked;
+    }
+
+    private static int computeDirectBbdColorArgb(View host, int origColor, ConfigStore.HookConfig cfg) {
+        if (!cfg.isFcEnabled() || cfg.isFcIslandStockAppearance()) {
+            return origColor;
+        }
+        boolean useCustom = cfg.isFcColorEnabled() && !shouldSuppressTopCustomColor(host, cfg);
+        float op = cfg.getFcIslandOpacity();
+        int origA = (origColor >>> 24) & 0xFF;
+        if (useCustom) {
+            int fcColor = cfg.getFcColor();
+            float colorAlpha = ConfigStore.colorAlphaScale(fcColor);
+            int outA = Math.max(0, Math.min(255, Math.round(235.0f * op * colorAlpha)));
+            return (outA << 24) | (fcColor & 0x00FFFFFF);
+        }
+        if (cfg.getFcIslandOpacityInt() < 100 || cfg.isFcRemoveIslandMask()) {
+            int baseA = origA > 0 ? origA : 174;
+            int outA = Math.max(0, Math.min(255, Math.round(baseA * op)));
+            return (outA << 24) | 0x1A1A1F;
+        }
+        return origColor;
+    }
+
     private static boolean hookBackgroundHelper(final ClassLoader pluginCl, final ConfigStore.HookConfig cfg) {
         try {
             Class<?> helperCls = XposedCompat.findClassIfExists(CLS_BG_HELPER, pluginCl);
@@ -2297,12 +2931,19 @@ public final class DynamicIslandHook {
                     }
                     View bgView = param.args[0] instanceof View ? (View) param.args[0] : null;
                     Object vrm = param.args[1];
-                    if (bgView != null) {
-                        TAGGED_ISLAND_VIEW.put(bgView, Boolean.TRUE);
+                    if (bgView == null || isInsideExcludedLockOrCapsuleView(bgView)) {
+                        return;
                     }
-                    if (vrm != null && bgView != null) {
+                    TAGGED_ISLAND_VIEW.put(bgView, Boolean.TRUE);
+                    if (vrm != null) {
                         VRM_TO_VIEW.put(vrm, bgView);
                         VIEW_TO_VRM.put(bgView, vrm);
+                        hookViewRootManagerClass(vrm.getClass(), cfg);
+                        Drawable bbd = extractBbdFromVrm(vrm);
+                        if (bbd != null) {
+                            BBD_TO_VRM.put(bbd, vrm);
+                            BBD_TO_VIEW.put(bbd, bgView);
+                        }
                     }
                 }
 
@@ -2314,6 +2955,10 @@ public final class DynamicIslandHook {
                     View bgView = param.args[0] instanceof View ? (View) param.args[0] : null;
                     Object vrm = param.args[1];
                     View gradView = param.args[2] instanceof View ? (View) param.args[2] : null;
+                    if ((bgView != null && isInsideExcludedLockOrCapsuleView(bgView))
+                            || (gradView != null && isInsideExcludedLockOrCapsuleView(gradView))) {
+                        return;
+                    }
                     if (gradView != null) {
                         patchGradientOverlay(gradView, cfg);
                     }
@@ -2361,9 +3006,16 @@ public final class DynamicIslandHook {
                 }
             }
         }
+        View host = resolveDrawableHostView(d);
+        View root = (host != null) ? resolveEnclosingCardRoot(host) : null;
+        boolean cardMedia = (host != null) && isViewContainingMedia(root != null ? root : host);
+        int hostSig = (root != null ? System.identityHashCode(root) : (host != null ? System.identityHashCode(host) : 0))
+                ^ (root != null ? computeDirectChildSignature(root) * 31 : 0);
         int cfgHash = computeConfigHash(cfg)
                 ^ (sMediaColorVersion * 1315423911)
-                ^ (sTopMediaFluidCloudActive ? 0x5A5A5A5A : 0);
+                ^ (sTopMediaFluidCloudActive ? 0x5A5A5A5A : 0)
+                ^ (cardMedia ? 0x3C3C3C3C : 0)
+                ^ (hostSig * 0x9E3779B1);
         return (((long) cfgHash) << 32)
                 | (((bw & 0xFFFFL) << 16) | (bh & 0xFFFFL));
     }
@@ -2386,6 +3038,15 @@ public final class DynamicIslandHook {
                             Long prevFast = LAST_GRAD_FAST_KEY.get(d);
                             if (prevFast == null || prevFast != fastKey) {
                                 patchGradientDrawable(d, cfg);
+                            } else if (cfg.isFcEnabled()) {
+                                Long prevBlur = LAST_GRAD_BLUR_KEY.get(d);
+                                if (prevBlur == null || prevBlur != fastKey) {
+                                    View host = resolveDrawableHostView(d);
+                                    View cardRoot = resolveEnclosingCardRoot(host);
+                                    if (syncCardBlurTargetsFromGradient(host, cardRoot, cfg)) {
+                                        LAST_GRAD_BLUR_KEY.put(d, fastKey);
+                                    }
+                                }
                             }
                         }
                         Object res = chain.proceed();
@@ -2436,8 +3097,16 @@ public final class DynamicIslandHook {
                         return;
                     }
                     View bgView = (View) param.thisObject;
+                    if (isInsideExcludedLockOrCapsuleView(bgView)) {
+                        return;
+                    }
                     TAGGED_ISLAND_VIEW.put(bgView, Boolean.TRUE);
                     LAST_BG_VIEW_FAST_HASH.remove(bgView);
+                    LAST_CARD_DISCOVERY_MS.remove(bgView);
+                    Object existingVrm = VIEW_TO_VRM.get(bgView);
+                    if (existingVrm != null) {
+                        LAST_VRM_HASH.remove(existingVrm);
+                    }
                     syncViewAndGradient(bgView, cfg);
                 }
             };
@@ -2455,6 +3124,9 @@ public final class DynamicIslandHook {
                         Object self = chain.getThisObject();
                         if (self instanceof View) {
                             View bgView = (View) self;
+                            if (isInsideExcludedLockOrCapsuleView(bgView)) {
+                                return res;
+                            }
                             Object arg0 = chain.getArg(0);
                             float alpha = arg0 instanceof Float ? (Float) arg0 : 1.0f;
                             Object vrm = resolveVrmFromView(bgView);
@@ -2478,7 +3150,10 @@ public final class DynamicIslandHook {
                     public Object intercept(XposedInterface.Chain chain) throws Throwable {
                         Object self = chain.getThisObject();
                         if (self instanceof View) {
-                            syncViewAndGradientIfChanged((View) self, cfg);
+                            View bgView = (View) self;
+                            if (!isInsideExcludedLockOrCapsuleView(bgView)) {
+                                syncViewAndGradientIfChanged(bgView, cfg);
+                            }
                         }
                         return chain.proceed();
                     }
@@ -2501,7 +3176,10 @@ public final class DynamicIslandHook {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     if (param.thisObject instanceof View) {
-                        patchGradientOverlay((View) param.thisObject, cfg);
+                        View gv = (View) param.thisObject;
+                        if (!isInsideExcludedLockOrCapsuleView(gv)) {
+                            patchGradientOverlay(gv, cfg);
+                        }
                     }
                 }
             };
@@ -2530,7 +3208,16 @@ public final class DynamicIslandHook {
                         return;
                     }
                     View v = (View) param.thisObject;
+                    if (isInsideExcludedLockOrCapsuleView(v)) {
+                        return;
+                    }
+                    TAGGED_ISLAND_VIEW.put(v, Boolean.TRUE);
                     LAST_BG_VIEW_FAST_HASH.remove(v);
+                    LAST_CARD_DISCOVERY_MS.remove(v);
+                    Object existingVrm = VIEW_TO_VRM.get(v);
+                    if (existingVrm != null) {
+                        LAST_VRM_HASH.remove(existingVrm);
+                    }
                     syncInstantContainer(v, cfg);
                 }
             };
@@ -2544,7 +3231,10 @@ public final class DynamicIslandHook {
                     public Object intercept(XposedInterface.Chain chain) throws Throwable {
                         Object self = chain.getThisObject();
                         if (self instanceof View) {
-                            syncInstantContainerIfChanged((View) self, cfg);
+                            View v = (View) self;
+                            if (!isInsideExcludedLockOrCapsuleView(v)) {
+                                syncInstantContainerIfChanged(v, cfg);
+                            }
                         }
                         return chain.proceed();
                     }
@@ -2578,49 +3268,83 @@ public final class DynamicIslandHook {
         }
     }
 
-    private static int computeFastBgHash(ConfigStore.HookConfig cfg) {
+    private static int computeFastBgHash(View v, ConfigStore.HookConfig cfg) {
+        View root = (v != null) ? resolveEnclosingCardRoot(v) : null;
+        boolean cardMedia = (v != null) && isViewContainingMedia(root != null ? root : v);
+        int hostSig = (root != null ? System.identityHashCode(root) : (v != null ? System.identityHashCode(v) : 0))
+                ^ (root != null ? computeDirectChildSignature(root) * 31 : 0);
         return computeConfigHash(cfg)
                 ^ (sMediaColorVersion * 1315423911)
-                ^ (sTopMediaFluidCloudActive ? 0x5A5A5A5A : 0);
+                ^ (sTopMediaFluidCloudActive ? 0x5A5A5A5A : 0)
+                ^ (cardMedia ? 0x3C3C3C3C : 0)
+                ^ (hostSig * 0x9E3779B1);
     }
 
     private static void syncViewAndGradientIfChanged(View view, ConfigStore.HookConfig cfg) {
-        int fastHash = computeFastBgHash(cfg);
+        if (view == null || isInsideExcludedLockOrCapsuleView(view)) {
+            return;
+        }
+        int fastHash = computeFastBgHash(view, cfg);
         Integer prev = LAST_BG_VIEW_FAST_HASH.get(view);
         if (prev != null && prev == fastHash) {
             return;
         }
-        syncViewAndGradient(view, cfg);
-        LAST_BG_VIEW_FAST_HASH.put(view, fastHash);
+        if (syncViewAndGradient(view, cfg)) {
+            LAST_BG_VIEW_FAST_HASH.put(view, fastHash);
+        }
     }
 
     private static void syncInstantContainerIfChanged(View container, ConfigStore.HookConfig cfg) {
-        int fastHash = computeFastBgHash(cfg);
+        if (container == null || isInsideExcludedLockOrCapsuleView(container)) {
+            return;
+        }
+        int fastHash = computeFastBgHash(container, cfg);
         Integer prev = LAST_BG_VIEW_FAST_HASH.get(container);
         if (prev != null && prev == fastHash) {
             return;
         }
-        syncInstantContainer(container, cfg);
-        LAST_BG_VIEW_FAST_HASH.put(container, fastHash);
+        if (syncInstantContainer(container, cfg)) {
+            LAST_BG_VIEW_FAST_HASH.put(container, fastHash);
+        }
     }
 
-    private static void syncViewAndGradient(View view, ConfigStore.HookConfig cfg) {
+    private static boolean syncViewAndGradient(View view, ConfigStore.HookConfig cfg) {
+        if (view == null || isInsideExcludedLockOrCapsuleView(view)) {
+            return false;
+        }
+        boolean synced = false;
         Object vrm = resolveVrmFromView(view);
         if (vrm != null) {
             ensureVrmSynced(vrm, cfg);
+            synced = LAST_VRM_HASH.get(vrm) != null;
+        }
+        synced |= syncViewDirectBlurDrawables(view, cfg);
+        if (!synced) {
+            View cardRoot = resolveEnclosingCardRoot(view);
+            if (cardRoot != null) {
+                synced = discoverAndSyncCardBlurTargets(cardRoot, cfg);
+            } else {
+                synced = discoverAndSyncCardBlurTargets(view, cfg);
+            }
         }
         patchViewBackgroundLayers(view, cfg);
         reapplySiblingGradient(view, cfg);
         syncCardMultiLightRefresh(view, cfg);
-        LAST_BG_VIEW_FAST_HASH.put(view, computeFastBgHash(cfg));
+        if (synced) {
+            LAST_BG_VIEW_FAST_HASH.put(view, computeFastBgHash(view, cfg));
+        }
+        return synced;
     }
 
-    private static void syncInstantContainer(View container, ConfigStore.HookConfig cfg) {
-        Object vrm = findVrmField(container);
+    private static boolean syncInstantContainer(View container, ConfigStore.HookConfig cfg) {
+        TAGGED_ISLAND_VIEW.put(container, Boolean.TRUE);
+        boolean synced = false;
+        Object vrm = findVrmOnViewOrHelper(container);
         if (vrm != null) {
             VRM_TO_VIEW.put(vrm, container);
             VIEW_TO_VRM.put(container, vrm);
             ensureVrmSynced(vrm, cfg);
+            synced = LAST_VRM_HASH.get(vrm) != null;
         }
         View instantView = readViewField(container, "g");
         if (instantView != null) {
@@ -2635,8 +3359,12 @@ public final class DynamicIslandHook {
                 patchViewBackgroundLayers(child, cfg);
             }
         }
+        synced |= discoverAndSyncCardBlurTargets(container, cfg);
         syncCardMultiLightRefresh(container, cfg);
-        LAST_BG_VIEW_FAST_HASH.put(container, computeFastBgHash(cfg));
+        if (synced) {
+            LAST_BG_VIEW_FAST_HASH.put(container, computeFastBgHash(container, cfg));
+        }
+        return synced;
     }
 
     private static void syncCardMultiLightRefresh(View view, ConfigStore.HookConfig cfg) {
@@ -2664,15 +3392,19 @@ public final class DynamicIslandHook {
             }
             return cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud();
         }
-        return hasActiveTopMediaFluidCloud();
+        return cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud();
+    }
+
+    private static int computeVrmDesiredHash(View host, ConfigStore.HookConfig cfg) {
+        boolean suppressCustom = shouldSuppressTopCustomColor(host, cfg);
+        return computeConfigHash(cfg) * 31 + (suppressCustom ? 1 : 0);
     }
 
     private static void ensureVrmSynced(Object vrm, ConfigStore.HookConfig cfg) {
         if (vrm == null || Boolean.TRUE.equals(IN_REAPPLY.get())) {
             return;
         }
-        boolean suppressCustom = shouldSuppressTopCustomColor(VRM_TO_VIEW.get(vrm), cfg);
-        int desiredHash = computeConfigHash(cfg) * 31 + (suppressCustom ? 1 : 0);
+        int desiredHash = computeVrmDesiredHash(VRM_TO_VIEW.get(vrm), cfg);
         Integer prevHash = LAST_VRM_HASH.get(vrm);
         if (prevHash != null && prevHash == desiredHash) {
             return;
@@ -2680,12 +3412,22 @@ public final class DynamicIslandHook {
         syncVrmNow(vrm, cfg, desiredHash);
     }
 
-    private static void syncVrmNow(Object vrm, ConfigStore.HookConfig cfg, int desiredHash) {
+    private static boolean syncVrmNow(Object vrm, ConfigStore.HookConfig cfg, int desiredHash) {
         if (vrm == null || Boolean.TRUE.equals(IN_REAPPLY.get())) {
-            return;
+            return false;
         }
+        hookViewRootManagerClass(vrm.getClass(), cfg);
+        boolean appliedParam = false;
         IN_REAPPLY.set(Boolean.TRUE);
         try {
+            Drawable bbd = extractBbdFromVrm(vrm);
+            if (bbd != null) {
+                BBD_TO_VRM.put(bbd, vrm);
+                View vrmHost = VRM_TO_VIEW.get(vrm);
+                if (vrmHost != null) {
+                    BBD_TO_VIEW.put(bbd, vrmHost);
+                }
+            }
             Object baseParam = LAST_BLUR_PARAM.get(vrm);
             if (baseParam == null) {
                 baseParam = extractBlurParamFromVrm(vrm);
@@ -2702,9 +3444,10 @@ public final class DynamicIslandHook {
                     if (!cfg.isFcEnabled() || cfg.isFcIslandStockAppearance()) {
                         restoreBlurParam(vrm, clonedParam);
                     } else {
-                        applyTintToBlurParam(vrm, clonedParam, cfg);
+                        applyTintToBlurParam(vrm, VRM_TO_VIEW.get(vrm), clonedParam, cfg);
                     }
                     invokeVrmSetBlurParams(vrm, clonedParam);
+                    appliedParam = true;
                     if (!sLoggedFirstVrmApply) {
                         sLoggedFirstVrmApply = true;
                         cfg.note("DynamicIsland: applied OplusBlurParam tint islandOp="
@@ -2726,16 +3469,19 @@ public final class DynamicIslandHook {
                         : origRad;
                 invokeVrmSetBlurRadius(vrm, targetRad);
             }
-            LAST_VRM_HASH.put(vrm, desiredHash);
+            if (appliedParam) {
+                LAST_VRM_HASH.put(vrm, desiredHash);
+            }
+            return appliedParam;
         } catch (Throwable ignored) {
+            return false;
         } finally {
             IN_REAPPLY.remove();
         }
     }
 
     private static void syncVrmNow(Object vrm, ConfigStore.HookConfig cfg) {
-        boolean suppressCustom = shouldSuppressTopCustomColor(VRM_TO_VIEW.get(vrm), cfg);
-        syncVrmNow(vrm, cfg, computeConfigHash(cfg) * 31 + (suppressCustom ? 1 : 0));
+        syncVrmNow(vrm, cfg, computeVrmDesiredHash(VRM_TO_VIEW.get(vrm), cfg));
     }
 
     private static Object cloneBlurParam(Object vrm, Object sourceParam) {
@@ -2767,13 +3513,24 @@ public final class DynamicIslandHook {
         }
     }
 
-    private static Object extractBlurParamFromVrm(Object vrm) {
+    private static Drawable extractBbdFromVrm(Object vrm) {
+        if (vrm == null) {
+            return null;
+        }
         try {
             Method getDrawable = findMethod(vrm.getClass(), "getBackgroundBlurDrawable");
             Object bbd = getDrawable != null ? getDrawable.invoke(vrm) : readObjectField(vrm, "mBackgroundBlurDrawable");
-            if (bbd == null) {
-                return null;
-            }
+            return bbd instanceof Drawable ? (Drawable) bbd : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Object extractBbdExtImpl(Object bbd) {
+        if (bbd == null) {
+            return null;
+        }
+        try {
             Method getWrapper = findMethod(bbd.getClass(), "getWrapper");
             if (getWrapper == null) {
                 return null;
@@ -2783,17 +3540,328 @@ public final class DynamicIslandHook {
                 return null;
             }
             Method getExt = findMethod(wrapper.getClass(), "getExtImpl");
-            if (getExt == null) {
-                return null;
-            }
-            Object ext = getExt.invoke(wrapper);
-            if (ext == null) {
-                return null;
-            }
-            return readObjectField(ext, "mBlurParams");
+            return getExt != null ? getExt.invoke(wrapper) : null;
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    private static Object extractBlurParamFromVrm(Object vrm) {
+        Drawable bbd = extractBbdFromVrm(vrm);
+        Object ext = extractBbdExtImpl(bbd);
+        return ext != null ? readObjectField(ext, "mBlurParams") : null;
+    }
+
+    private static boolean ensureDirectBbdSynced(Drawable bbd, View host, ConfigStore.HookConfig cfg) {
+        if (bbd == null || host == null || Boolean.TRUE.equals(IN_REAPPLY.get())) {
+            return false;
+        }
+        Object mappedVrm = BBD_TO_VRM.get(bbd);
+        if (mappedVrm != null) {
+            ensureVrmSynced(mappedVrm, cfg);
+            return LAST_VRM_HASH.get(mappedVrm) != null;
+        }
+        BBD_TO_VIEW.put(bbd, host);
+        TAGGED_ISLAND_VIEW.put(host, Boolean.TRUE);
+        hookBackgroundBlurDrawableClass(bbd.getClass(), cfg);
+        Object ext = extractBbdExtImpl(bbd);
+        if (ext != null) {
+            hookBackgroundBlurExtClass(ext.getClass(), cfg);
+            EXT_TO_BBD.put(ext, bbd);
+        }
+        int desiredHash = computeVrmDesiredHash(host, cfg);
+        Object baseParam = LAST_BLUR_PARAM.get(bbd);
+        if (baseParam == null && ext != null) {
+            baseParam = readObjectField(ext, "mBlurParams");
+            if (baseParam != null) {
+                LAST_BLUR_PARAM.put(bbd, baseParam);
+                ensureOrigParamSaved(bbd, baseParam);
+            }
+        }
+        if (baseParam != null && ext != null) {
+            Integer prevHash = LAST_VRM_HASH.get(bbd);
+            if (prevHash != null && prevHash == desiredHash) {
+                return true;
+            }
+            IN_REAPPLY.set(Boolean.TRUE);
+            try {
+                Integer prevOrigColor = ORIG_BBD_COLOR.remove(bbd);
+                if (prevOrigColor != null) {
+                    LAST_BBD_COLOR_HASH.remove(bbd);
+                    invokeBbdSetColor(bbd, prevOrigColor);
+                }
+                Object clonedParam = cloneBlurParam(bbd, baseParam);
+                if (clonedParam != null) {
+                    if (!cfg.isFcEnabled() || cfg.isFcIslandStockAppearance()) {
+                        restoreBlurParam(bbd, clonedParam);
+                    } else {
+                        applyTintToBlurParam(bbd, host, clonedParam, cfg);
+                    }
+                    invokeBbdExtSetBlurParams(ext, clonedParam);
+                    Integer origRad = ORIG_RADIUS.get(bbd);
+                    if (origRad == null) {
+                        int curRad = readIntField(bbd, "mBlurRadius", -1);
+                        if (curRad > 0) {
+                            origRad = curRad;
+                            ORIG_RADIUS.put(bbd, origRad);
+                        }
+                    }
+                    if (origRad != null) {
+                        int targetRad = (cfg.isFcEnabled() && cfg.getFcBlurInt() != 100)
+                                ? Math.max(0, Math.round(origRad * cfg.getFcBlurScale()))
+                                : origRad;
+                        invokeBbdSetBlurRadius(bbd, targetRad);
+                    }
+                    bbd.invalidateSelf();
+                    host.invalidate();
+                    LAST_VRM_HASH.put(bbd, desiredHash);
+                    if (!sLoggedFirstBbdApply) {
+                        sLoggedFirstBbdApply = true;
+                        cfg.note("DynamicIsland: applied direct BBD OplusBlurParam tint color=0x"
+                                + Integer.toHexString(cfg.getFcColor()));
+                    }
+                    return true;
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                IN_REAPPLY.remove();
+            }
+            return false;
+        }
+        Integer prevColorHash = LAST_BBD_COLOR_HASH.get(bbd);
+        if (prevColorHash != null && prevColorHash == desiredHash) {
+            return false;
+        }
+        IN_REAPPLY.set(Boolean.TRUE);
+        try {
+            Integer origColor = ORIG_BBD_COLOR.get(bbd);
+            if (origColor == null) {
+                origColor = readIntField(bbd, "mColor", 0);
+                ORIG_BBD_COLOR.put(bbd, origColor);
+            }
+            int targetColor = (!cfg.isFcEnabled() || cfg.isFcIslandStockAppearance())
+                    ? origColor
+                    : computeDirectBbdColorArgb(host, origColor, cfg);
+            invokeBbdSetColor(bbd, targetColor);
+            Integer origRad = ORIG_RADIUS.get(bbd);
+            if (origRad == null) {
+                int curRad = readIntField(bbd, "mBlurRadius", -1);
+                if (curRad > 0) {
+                    origRad = curRad;
+                    ORIG_RADIUS.put(bbd, origRad);
+                }
+            }
+            if (origRad != null) {
+                int targetRad = (cfg.isFcEnabled() && cfg.getFcBlurInt() != 100)
+                        ? Math.max(0, Math.round(origRad * cfg.getFcBlurScale()))
+                        : origRad;
+                invokeBbdSetBlurRadius(bbd, targetRad);
+            }
+            bbd.invalidateSelf();
+            host.invalidate();
+            LAST_BBD_COLOR_HASH.put(bbd, desiredHash);
+        } catch (Throwable ignored) {
+        } finally {
+            IN_REAPPLY.remove();
+        }
+        return false;
+    }
+
+    private static Object findVrmOnViewOrHelper(View view) {
+        if (view == null) {
+            return null;
+        }
+        Object vrm = VIEW_TO_VRM.get(view);
+        if (vrm != null) {
+            return vrm;
+        }
+        Class<?> cls = view.getClass();
+        Object cached = VRM_FIELD_CACHE.get(cls);
+        if (cached == null) {
+            Object resolved = resolveVrmFieldPath(cls);
+            Object toStore = resolved != null ? resolved : MISSING;
+            Object prev = VRM_FIELD_CACHE.putIfAbsent(cls, toStore);
+            cached = prev != null ? prev : toStore;
+        }
+        if (cached instanceof Field) {
+            try {
+                return ((Field) cached).get(view);
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        if (cached instanceof Field[]) {
+            Field[] path = (Field[]) cached;
+            if (path.length == 2) {
+                try {
+                    Object helper = path[0].get(view);
+                    return helper != null ? path[1].get(helper) : null;
+                } catch (Throwable ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Object resolveVrmFieldPath(Class<?> viewCls) {
+        Class<?> c = viewCls;
+        while (c != null && c != View.class && c != Object.class) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                if (f.getType().getName().endsWith(".ViewRootManager")) {
+                    f.setAccessible(true);
+                    return f;
+                }
+            }
+            c = c.getSuperclass();
+        }
+        if (!viewCls.getName().startsWith("com.oplus.systemui.plugins.seedling.")) {
+            return null;
+        }
+        c = viewCls;
+        while (c != null && c != View.class && c != Object.class) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                Class<?> ft = f.getType();
+                String ftn = ft.getName();
+                if (ft.isPrimitive() || ft.isArray()
+                        || ftn.startsWith("android.")
+                        || ftn.startsWith("java.")
+                        || ftn.startsWith("javax.")
+                        || ftn.startsWith("kotlin.")
+                        || ftn.startsWith("androidx.")) {
+                    continue;
+                }
+                Class<?> hc = ft;
+                while (hc != null && hc != Object.class) {
+                    for (Field hf : hc.getDeclaredFields()) {
+                        if (!Modifier.isStatic(hf.getModifiers())
+                                && hf.getType().getName().endsWith(".ViewRootManager")) {
+                            f.setAccessible(true);
+                            hf.setAccessible(true);
+                            return new Field[]{f, hf};
+                        }
+                    }
+                    hc = hc.getSuperclass();
+                }
+            }
+            c = c.getSuperclass();
+        }
+        return null;
+    }
+
+    private static void collectBlurDrawables(Drawable d, List<Drawable> out, int depth) {
+        if (d == null || depth > 4) {
+            return;
+        }
+        String cn = d.getClass().getName();
+        if (cn.endsWith("BackgroundBlurDrawable")) {
+            out.add(d);
+            return;
+        }
+        if (d instanceof LayerDrawable) {
+            LayerDrawable ld = (LayerDrawable) d;
+            for (int i = 0, n = ld.getNumberOfLayers(); i < n; i++) {
+                collectBlurDrawables(ld.getDrawable(i), out, depth + 1);
+            }
+            return;
+        }
+        if (d instanceof DrawableWrapper) {
+            collectBlurDrawables(((DrawableWrapper) d).getDrawable(), out, depth + 1);
+            return;
+        }
+        Object innerBbd = readObjectField(d, "mBackgroundBlurDrawable");
+        if (innerBbd instanceof Drawable) {
+            collectBlurDrawables((Drawable) innerBbd, out, depth + 1);
+        }
+    }
+
+    private static boolean syncViewDirectBlurDrawables(View v, ConfigStore.HookConfig cfg) {
+        if (v == null) {
+            return false;
+        }
+        Drawable bg = v.getBackground();
+        if (bg == null) {
+            return false;
+        }
+        List<Drawable> list = new ArrayList<>(2);
+        collectBlurDrawables(bg, list, 0);
+        boolean synced = false;
+        for (int i = 0, n = list.size(); i < n; i++) {
+            Drawable bbd = list.get(i);
+            if (bbd != null && ensureDirectBbdSynced(bbd, v, cfg)) {
+                synced = true;
+            }
+        }
+        return synced;
+    }
+
+    private static boolean discoverAndSyncCardBlurTargets(View root, ConfigStore.HookConfig cfg) {
+        if (root == null) {
+            return false;
+        }
+        final int maxViews = 64;
+        final int maxDepth = 8;
+        View[] queue = new View[maxViews];
+        int[] depths = new int[maxViews];
+        int head = 0;
+        int tail = 0;
+        queue[tail] = root;
+        depths[tail] = 0;
+        tail++;
+        boolean synced = false;
+        while (head < tail) {
+            View node = queue[head];
+            int depth = depths[head];
+            head++;
+            Object vrm = findVrmOnViewOrHelper(node);
+            if (vrm != null) {
+                VRM_TO_VIEW.put(vrm, node);
+                VIEW_TO_VRM.put(node, vrm);
+                TAGGED_ISLAND_VIEW.put(node, Boolean.TRUE);
+                ensureVrmSynced(vrm, cfg);
+                if (LAST_VRM_HASH.get(vrm) != null) {
+                    synced = true;
+                }
+            }
+            if (syncViewDirectBlurDrawables(node, cfg)) {
+                synced = true;
+            }
+            if (depth < maxDepth && node instanceof ViewGroup && tail < maxViews) {
+                ViewGroup vg = (ViewGroup) node;
+                for (int i = 0, n = vg.getChildCount(); i < n && tail < maxViews; i++) {
+                    View child = vg.getChildAt(i);
+                    if (child != null) {
+                        queue[tail] = child;
+                        depths[tail] = depth + 1;
+                        tail++;
+                    }
+                }
+            }
+        }
+        return synced;
+    }
+
+    private static boolean syncCardBlurTargetsFromGradient(View host, View cardRoot, ConfigStore.HookConfig cfg) {
+        if (cfg == null) {
+            return false;
+        }
+        View scope = cardRoot != null ? cardRoot : (host != null && isSeedlingCardView(host) ? host : null);
+        if (scope == null) {
+            return false;
+        }
+        long now = SystemClock.uptimeMillis();
+        Long prevMs = LAST_CARD_DISCOVERY_MS.get(scope);
+        if (prevMs != null && (now - prevMs) < 200L) {
+            return false;
+        }
+        LAST_CARD_DISCOVERY_MS.put(scope, now);
+        return discoverAndSyncCardBlurTargets(scope, cfg);
     }
 
     private static int computeConfigHash(ConfigStore.HookConfig cfg) {
@@ -2802,10 +3870,14 @@ public final class DynamicIslandHook {
         h = h * 31 + cfg.getFcBlurInt();
         h = h * 31 + cfg.getFcBottomGlowInt();
         h = h * 31 + cfg.getFcBottomGlowChromaInt();
+        h = h * 31 + cfg.getFcSingleGlowInt();
+        h = h * 31 + cfg.getFcSingleGlowChromaInt();
         h = h * 31 + (cfg.isFcColorEnabled() ? 1 : 0);
         h = h * 31 + cfg.getFcColor();
         h = h * 31 + (cfg.isFcCustomMaskEnabled() ? 1 : 0);
         h = h * 31 + cfg.getFcCustomMaskColor();
+        h = h * 31 + (cfg.isFcCustomGlowEnabled() ? 1 : 0);
+        h = h * 31 + cfg.getFcCustomGlowColor();
         h = h * 31 + (cfg.isFcRemoveIslandMask() ? 1 : 0);
         h = h * 31 + (cfg.isFcMaskFollowMedia() ? 1 : 0);
         h = h * 31 + cfg.getFcMaskBrightnessInt();
@@ -2820,7 +3892,8 @@ public final class DynamicIslandHook {
         h = h * 31 + cfg.getFcMaskGradMidInt();
         h = h * 31 + cfg.getFcMaskGradStrengthInt();
         if (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()
-                || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled()) {
+                || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled()
+                || cfg.isFcCustomGlowEnabled()) {
             h = h * 31 + (sTopMediaFluidCloudActive ? 1 : 0);
             h = h * 31 + sLatestMediaCoverColor;
             h = h * 31 + sLastMediaRawRgb;
@@ -2860,7 +3933,7 @@ public final class DynamicIslandHook {
     }
 
     private static void patchGradientOverlay(View gradView, ConfigStore.HookConfig cfg) {
-        if (gradView == null) {
+        if (gradView == null || isInsideExcludedLockOrCapsuleView(gradView)) {
             return;
         }
         ACTIVE_GRADIENT_VIEWS.put(gradView, Boolean.TRUE);
@@ -2878,7 +3951,16 @@ public final class DynamicIslandHook {
             return false;
         }
         View host = resolveDrawableHostView(drawable);
+        if (host != null && isInsideExcludedLockOrCapsuleView(host)) {
+            return false;
+        }
         View cardRoot = resolveEnclosingCardRoot(host);
+        long fastKey = computeGradFastKey(drawable, cfg);
+        if (syncCardBlurTargetsFromGradient(host, cardRoot, cfg)) {
+            LAST_GRAD_BLUR_KEY.put(drawable, fastKey);
+        } else {
+            LAST_GRAD_BLUR_KEY.remove(drawable);
+        }
         boolean isMedia = cardRoot != null && isViewContainingMedia(cardRoot);
         boolean wantMediaTint = isMedia
                 ? cfg.isFcMaskFollowMedia()
@@ -2920,7 +4002,6 @@ public final class DynamicIslandHook {
         } catch (Throwable ignored) {
         }
 
-        long fastKey = computeGradFastKey(drawable, cfg);
         int hash = computeConfigHash(cfg);
         hash = hash * 31 + ((hasMediaMaskTint ? 1 : 0) | (hasCustomMask ? 2 : 0));
         hash = hash * 31 + maskRgb;
@@ -3130,34 +4211,66 @@ public final class DynamicIslandHook {
         return res;
     }
 
-    private static void ensureOrigParamSaved(Object vrm, Object blurParam) {
-        if (!ORIG_PARAM_COLORS.containsKey(vrm)) {
-            try {
-                float[] blend = readFloatArray(blurParam, "mBlendColor");
-                float[] mix = readFloatArray(blurParam, "mMixColor");
-                float[][] saved = new float[][]{
-                        blend != null ? blend.clone() : null,
-                        mix != null ? mix.clone() : null
-                };
-                ORIG_PARAM_COLORS.put(vrm, saved);
-            } catch (Throwable ignored) {
-            }
+    private static void saveOrigParamFromLive(Object key, Object blurParam) {
+        if (key == null || blurParam == null) {
+            return;
         }
-        if (!ORIG_PARAM_FLOATS.containsKey(vrm)) {
-            try {
-                Method toArr = findMethod(blurParam.getClass(), "toFloatArray");
-                if (toArr != null) {
-                    Object res = toArr.invoke(blurParam);
-                    if (res instanceof float[]) {
-                        ORIG_PARAM_FLOATS.put(vrm, ((float[]) res).clone());
-                    }
+        try {
+            float[] blend = readFloatArray(blurParam, "mBlendColor");
+            float[] mix = readFloatArray(blurParam, "mMixColor");
+            float[][] saved = new float[][]{
+                    blend != null ? blend.clone() : null,
+                    mix != null ? mix.clone() : null
+            };
+            ORIG_PARAM_COLORS.put(key, saved);
+        } catch (Throwable ignored) {
+        }
+        try {
+            Method toArr = findMethod(blurParam.getClass(), "toFloatArray");
+            if (toArr != null) {
+                Object res = toArr.invoke(blurParam);
+                if (res instanceof float[]) {
+                    ORIG_PARAM_FLOATS.put(key, ((float[]) res).clone());
                 }
-            } catch (Throwable ignored) {
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void ensureOrigParamSaved(Object vrm, Object blurParam) {
+        if (!ORIG_PARAM_COLORS.containsKey(vrm) || !ORIG_PARAM_FLOATS.containsKey(vrm)) {
+            if (!ORIG_PARAM_COLORS.containsKey(vrm)) {
+                try {
+                    float[] blend = readFloatArray(blurParam, "mBlendColor");
+                    float[] mix = readFloatArray(blurParam, "mMixColor");
+                    float[][] saved = new float[][]{
+                            blend != null ? blend.clone() : null,
+                            mix != null ? mix.clone() : null
+                    };
+                    ORIG_PARAM_COLORS.put(vrm, saved);
+                } catch (Throwable ignored) {
+                }
+            }
+            if (!ORIG_PARAM_FLOATS.containsKey(vrm)) {
+                try {
+                    Method toArr = findMethod(blurParam.getClass(), "toFloatArray");
+                    if (toArr != null) {
+                        Object res = toArr.invoke(blurParam);
+                        if (res instanceof float[]) {
+                            ORIG_PARAM_FLOATS.put(vrm, ((float[]) res).clone());
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
             }
         }
     }
 
     private static void restoreBlurParam(Object vrm, Object blurParam) {
+        float[] origFloats = ORIG_PARAM_FLOATS.get(vrm);
+        if (origFloats != null && origFloats.length > 3) {
+            writeIntField(blurParam, "mBlendMode", Math.round(origFloats[3]));
+        }
         float[][] orig = ORIG_PARAM_COLORS.get(vrm);
         if (orig == null) {
             return;
@@ -3173,12 +4286,19 @@ public final class DynamicIslandHook {
     }
 
     private static void applyTintToBlurParam(Object vrm, Object blurParam, ConfigStore.HookConfig cfg) {
+        applyTintToBlurParam(vrm, VRM_TO_VIEW.get(vrm), blurParam, cfg);
+    }
+
+    private static void applyTintToBlurParam(Object vrm, View host, Object blurParam, ConfigStore.HookConfig cfg) {
         float[] blend = readFloatArray(blurParam, "mBlendColor");
         float[] mix = readFloatArray(blurParam, "mMixColor");
-        if (blend == null || mix == null || blend.length < 4 || mix.length < 4) {
+        if (mix == null || mix.length < 4) {
             return;
         }
 
+        float[] origFloats = ORIG_PARAM_FLOATS.get(vrm);
+        int origMode = (origFloats != null && origFloats.length > 3)
+                ? Math.round(origFloats[3]) : BLUR_BLEND_MODE_GLOW_OVERLAY;
         float[][] orig = ORIG_PARAM_COLORS.get(vrm);
         float[] origBlend = (orig != null && orig[0] != null && orig[0].length >= 4)
                 ? orig[0] : new float[]{0.702f, 0.702f, 0.702f, 0.302f};
@@ -3187,36 +4307,42 @@ public final class DynamicIslandHook {
 
         float op = cfg.getFcIslandOpacity();
         boolean useCustom = cfg.isFcColorEnabled()
-                && !shouldSuppressTopCustomColor(VRM_TO_VIEW.get(vrm), cfg);
+                && !shouldSuppressTopCustomColor(host, cfg);
         int fcColor = useCustom ? cfg.getFcColor() : 0;
         float colorAlpha = useCustom ? ConfigStore.colorAlphaScale(fcColor) : 0.0f;
         float r = useCustom ? (((fcColor >> 16) & 0xFF) / 255.0f) : 0.0f;
         float g = useCustom ? (((fcColor >> 8) & 0xFF) / 255.0f) : 0.0f;
         float b = useCustom ? ((fcColor & 0xFF) / 255.0f) : 0.0f;
 
-        if (!useCustom && cfg.getFcIslandOpacityInt() >= 100 && !cfg.isFcRemoveIslandMask()) {
-            System.arraycopy(origMix, 0, mix, 0, 4);
-        } else if (useCustom) {
+        if (useCustom) {
+            // Switch from GLOW_OVERLAY (luminosity-only mix) to COLORMIX (straight RGB mix) so custom hues & brightness are preserved
+            writeIntField(blurParam, "mBlendMode", BLUR_BLEND_MODE_COLORMIX);
             mix[0] = r;
             mix[1] = g;
             mix[2] = b;
-            mix[3] = clamp01(0.74f * op * colorAlpha);
+            mix[3] = clamp01(0.92f * op * colorAlpha);
+            if (blend != null && blend.length >= 4) {
+                blend[0] = r;
+                blend[1] = g;
+                blend[2] = b;
+                blend[3] = 0.0f;
+            }
         } else {
-            // Preserve clean neutral frosted translucency without ash-grey mix pollution
-            mix[0] = 0.10f;
-            mix[1] = 0.10f;
-            mix[2] = 0.12f;
-            mix[3] = clamp01(0.68f * op);
+            writeIntField(blurParam, "mBlendMode", origMode);
+            if (cfg.getFcIslandOpacityInt() >= 100 && !cfg.isFcRemoveIslandMask()) {
+                System.arraycopy(origMix, 0, mix, 0, 4);
+            } else {
+                // Preserve clean neutral frosted translucency without ash-grey mix pollution
+                mix[0] = 0.10f;
+                mix[1] = 0.10f;
+                mix[2] = 0.12f;
+                mix[3] = clamp01(0.68f * op);
+            }
+            // Preserve ColorOS 17 native OplusBlurParam GLOW_OVERLAY highlight pipeline without weakening
+            if (blend != null && blend.length >= 4) {
+                System.arraycopy(origBlend, 0, blend, 0, 4);
+            }
         }
-
-        // Preserve ColorOS 17 native OplusBlurParam GLOW_OVERLAY highlight pipeline without weakening
-        float tintR = 0.55f + 0.45f * r;
-        float tintG = 0.55f + 0.45f * g;
-        float tintB = 0.55f + 0.45f * b;
-        blend[0] = useCustom ? (origBlend[0] + (tintR - origBlend[0]) * colorAlpha) : origBlend[0];
-        blend[1] = useCustom ? (origBlend[1] + (tintG - origBlend[1]) * colorAlpha) : origBlend[1];
-        blend[2] = useCustom ? (origBlend[2] + (tintB - origBlend[2]) * colorAlpha) : origBlend[2];
-        blend[3] = origBlend[3];
     }
 
     private static void drawIslandBottomGlow(Drawable drawable, Canvas canvas, ConfigStore.HookConfig cfg) {
@@ -3235,6 +4361,9 @@ public final class DynamicIslandHook {
         }
 
         View hostView = resolveDrawableHostView(drawable);
+        if (hostView != null && isInsideExcludedLockOrCapsuleView(hostView)) {
+            return;
+        }
         View cardRoot = resolveEnclosingCardRoot(hostView);
         View scopeRoot = cardRoot != null ? cardRoot : hostView;
         if (scopeRoot != null && hasActiveMultiLightInTree(scopeRoot)) {
@@ -3250,7 +4379,15 @@ public final class DynamicIslandHook {
         boolean isLargeMedia = isLargeMediaCardHeight(isMediaCard, h, dp);
         int boostPct = isLargeMedia ? cfg.getFcBottomGlowInt() : cfg.getFcSingleGlowInt();
         int chromaPct = isLargeMedia ? cfg.getFcBottomGlowChromaInt() : cfg.getFcSingleGlowChromaInt();
-        if (boostPct <= 0) {
+        boolean suppressCustomGlow = isMediaCard
+                || (cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud());
+        boolean hasCustomGlow = !suppressCustomGlow && cfg.isFcCustomGlowEnabled();
+        int customGlowArgb = hasCustomGlow ? cfg.getFcCustomGlowColor() : 0;
+        float customGlowAlpha = hasCustomGlow ? ConfigStore.colorAlphaScale(customGlowArgb) : 1.0f;
+        if (hasCustomGlow && customGlowAlpha <= 0.001f) {
+            return;
+        }
+        if (boostPct <= 0 && !hasCustomGlow) {
             return;
         }
 
@@ -3300,26 +4437,26 @@ public final class DynamicIslandHook {
             float offsetY = 90.0f * s;
             float brightBoost = clamp01(boostPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW);
             float chromaBoost = clamp01(chromaPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW_CHROMA);
+            float effBright = (hasCustomGlow && brightBoost <= 0.001f) ? 0.28f : brightBoost;
 
             float[] rgb = new float[]{1.0f, 1.0f, 1.0f};
             boolean colored = false;
             if (isMediaCard || cfg.isFcNonMediaMaskEnabled()) {
                 int mediaTintArgb = resolveScopedMediaTintArgb(isMediaCard, true, false);
                 if (mediaTintArgb != 0) {
-                    boostHighlightChromaArgb(mediaTintArgb, chromaBoost, brightBoost, rgb);
+                    boostHighlightChromaArgb(mediaTintArgb, chromaBoost, effBright, rgb);
                     colored = true;
                 }
             }
-            if (!colored && !isMediaCard && !(cfg.isFcNonMediaMaskEnabled() && hasActiveTopMediaFluidCloud())
-                    && cfg.isFcColorEnabled() && ((cfg.getFcColor() >>> 24) & 0xFF) > 0) {
-                float ca = ConfigStore.colorAlphaScale(cfg.getFcColor());
-                boostHighlightChromaArgb(cfg.getFcColor(), chromaBoost * ca, brightBoost, rgb);
+            if (!colored && hasCustomGlow) {
+                boostHighlightChromaArgb(customGlowArgb, chromaBoost, effBright, rgb);
                 colored = true;
             }
 
-            float shadowA = (colored ? 0.44f : 0.34f) * (float) Math.pow(brightBoost, colored ? 0.80 : 0.85) * alphaMul;
-            float rimA = (colored ? 0.78f : 0.68f) * (float) Math.pow(brightBoost, colored ? 0.80 : 0.85) * alphaMul;
-            float rimFade = (6.0f + 5.0f * brightBoost) * s;
+            float glowAlphaScale = hasCustomGlow ? customGlowAlpha : 1.0f;
+            float shadowA = (colored ? 0.44f : 0.34f) * (float) Math.pow(effBright, colored ? 0.80 : 0.85) * alphaMul * glowAlphaScale;
+            float rimA = (colored ? 0.78f : 0.68f) * (float) Math.pow(effBright, colored ? 0.80 : 0.85) * alphaMul * glowAlphaScale;
+            float rimFade = (6.0f + 5.0f * effBright) * s;
 
             shader.setFloatUniform("uSize", (float) w, (float) h);
             shader.setFloatUniform("uRadius", cornerRadius);
@@ -4236,9 +5373,10 @@ public final class DynamicIslandHook {
             return null;
         }
         int curChildCount = (root instanceof ViewGroup) ? ((ViewGroup) root).getChildCount() : 0;
+        int curSig = computeDirectChildSignature(root);
         long nowMs = SystemClock.uptimeMillis();
         RowBgCache entry = ROW_BG_CACHE.get(root);
-        if (entry != null && entry.childCount == curChildCount) {
+        if (entry != null && entry.childCount == curChildCount && entry.contentSig == curSig) {
             boolean hasAny = !entry.pageBgRefs.isEmpty() || !entry.mediaBgRefs.isEmpty();
             if (!hasAny) {
                 if (nowMs - entry.lastScanMs < 500L) {
@@ -4248,7 +5386,7 @@ public final class DynamicIslandHook {
                 boolean valid = true;
                 for (int i = 0, n = entry.pageBgRefs.size(); i < n; i++) {
                     View v = entry.pageBgRefs.get(i).get();
-                    if (v == null || !v.isAttachedToWindow()) {
+                    if (v == null || !v.isAttachedToWindow() || !isDescendantOf(v, root)) {
                         valid = false;
                         break;
                     }
@@ -4256,7 +5394,7 @@ public final class DynamicIslandHook {
                 if (valid) {
                     for (int i = 0, n = entry.mediaBgRefs.size(); i < n; i++) {
                         View v = entry.mediaBgRefs.get(i).get();
-                        if (v == null || !v.isAttachedToWindow()) {
+                        if (v == null || !v.isAttachedToWindow() || !isDescendantOf(v, root)) {
                             valid = false;
                             break;
                         }
@@ -4269,6 +5407,7 @@ public final class DynamicIslandHook {
         }
         RowBgCache fresh = new RowBgCache();
         fresh.childCount = curChildCount;
+        fresh.contentSig = curSig;
         fresh.lastScanMs = nowMs;
         scanRowBgTree(root, fresh);
         ROW_BG_CACHE.put(root, fresh);
@@ -4378,7 +5517,7 @@ public final class DynamicIslandHook {
         }
         for (int i = 0, n = cache.mediaBgRefs.size(); i < n; i++) {
             View v = cache.mediaBgRefs.get(i).get();
-            if (v != null && v.getVisibility() == View.VISIBLE) {
+            if (isVisibleWithin(v, root)) {
                 return true;
             }
         }
@@ -4402,14 +5541,40 @@ public final class DynamicIslandHook {
     }
 
     private static View resolveEnclosingCardRoot(View v) {
+        if (v == null) {
+            return null;
+        }
         View cur = v;
         for (int depth = 0; depth < 16 && cur != null; depth++) {
             String cn = cur.getClass().getName();
-            if (cn.endsWith(".CardView") || cn.endsWith(".InstantContainer")) {
+            if (CLS_CARD_VIEW.equals(cn) || CLS_INSTANT.equals(cn)) {
                 return cur;
             }
             ViewParent p = cur.getParent();
             cur = p instanceof View ? (View) p : null;
+        }
+        View highestCardView = null;
+        cur = v;
+        for (int depth = 0; depth < 16 && cur != null; depth++) {
+            String cn = cur.getClass().getName();
+            if (CLS_CARD_CONTAINER.equals(cn)) {
+                break;
+            }
+            if (cn.startsWith("com.oplus.systemui.plugins.seedling.card.")) {
+                highestCardView = cur;
+            }
+            ViewParent p = cur.getParent();
+            cur = p instanceof View ? (View) p : null;
+        }
+        if (highestCardView != null) {
+            return highestCardView;
+        }
+        String vn = v.getClass().getName();
+        if (CLS_CARD_GRAD.equals(vn) || CLS_CARD_BG.equals(vn)) {
+            ViewParent p = v.getParent();
+            if (p instanceof View && !CLS_CARD_CONTAINER.equals(p.getClass().getName())) {
+                return (View) p;
+            }
         }
         return null;
     }
@@ -4540,6 +5705,19 @@ public final class DynamicIslandHook {
         }
     }
 
+    private static void writeIntField(Object obj, String fieldName, int value) {
+        if (obj == null) {
+            return;
+        }
+        try {
+            Field f = findFieldCached(obj.getClass(), fieldName);
+            if (f != null) {
+                f.setInt(obj, value);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void setParamDirtyFlag(Object params, boolean shadowDirty, boolean value) {
         if (params == null) {
             return;
@@ -4663,10 +5841,110 @@ public final class DynamicIslandHook {
         int lastAppliedKey;
     }
 
+    private static boolean hookCardViewLifecycle(ClassLoader pluginCl, ConfigStore.HookConfig cfg) {
+        try {
+            Class<?> cardViewCls = XposedCompat.findClass(CLS_CARD_VIEW, pluginCl);
+            int hooked = 0;
+            hooked += XposedCompat.hookAllMethods(cardViewCls, "h", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (param.thisObject instanceof View) {
+                        invalidateCardViewCaches((View) param.thisObject);
+                    }
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (param.thisObject instanceof View) {
+                        invalidateCardViewCaches((View) param.thisObject);
+                    }
+                }
+            }).size();
+            hooked += XposedCompat.hookAllMethods(cardViewCls, "j", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (param.thisObject instanceof View) {
+                        invalidateCardViewCaches((View) param.thisObject);
+                    }
+                }
+            }).size();
+            return hooked > 0;
+        } catch (Throwable t) {
+            cfg.note("DynamicIsland: CardView lifecycle hook skipped: " + t);
+            return false;
+        }
+    }
+
+    private static void invalidateCardViewCaches(View cardView) {
+        if (cardView == null) {
+            return;
+        }
+        clearSubtreeCaches(cardView, 0);
+    }
+
+    private static void clearSubtreeCaches(View v, int depth) {
+        if (v == null || depth > 5) {
+            return;
+        }
+        ROW_BG_CACHE.remove(v);
+        LAST_BG_VIEW_FAST_HASH.remove(v);
+        LAST_CARD_LIGHT_HASH.remove(v);
+        Object vrm = VIEW_TO_VRM.get(v);
+        if (vrm != null) {
+            LAST_VRM_HASH.remove(vrm);
+        }
+        Drawable bg = v.getBackground();
+        if (bg != null) {
+            LAST_GRAD_FAST_KEY.remove(bg);
+            LAST_GRAD_HASH.remove(bg);
+            LAST_GRAD_BLUR_KEY.remove(bg);
+            LAST_BBD_COLOR_HASH.remove(bg);
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) v;
+            for (int i = 0, n = vg.getChildCount(); i < n; i++) {
+                clearSubtreeCaches(vg.getChildAt(i), depth + 1);
+            }
+        }
+    }
+
+    private static int computeDirectChildSignature(View root) {
+        if (!(root instanceof ViewGroup)) {
+            return 0;
+        }
+        ViewGroup vg = (ViewGroup) root;
+        int count = vg.getChildCount();
+        int h = count;
+        for (int i = 0; i < count; i++) {
+            View ch = vg.getChildAt(i);
+            h = h * 31 + (ch != null ? System.identityHashCode(ch) : 0);
+        }
+        return h;
+    }
+
+    private static boolean isVisibleWithin(View v, View root) {
+        if (v == null || !v.isAttachedToWindow()) {
+            return false;
+        }
+        View cur = v;
+        for (int depth = 0; depth < 24 && cur != null; depth++) {
+            if (cur.getVisibility() != View.VISIBLE) {
+                return false;
+            }
+            if (cur == root) {
+                return true;
+            }
+            ViewParent p = cur.getParent();
+            cur = (p instanceof View) ? (View) p : null;
+        }
+        return root == null && v.isShown();
+    }
+
     private static final class RowBgCache {
         final ArrayList<WeakReference<View>> pageBgRefs = new ArrayList<>(2);
         final ArrayList<WeakReference<View>> mediaBgRefs = new ArrayList<>(2);
         int childCount;
+        int contentSig;
         long lastScanMs;
     }
 

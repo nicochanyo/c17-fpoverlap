@@ -89,6 +89,7 @@ public class MainActivity extends Activity {
     private static final String STATE_FC_SUBPAGE = "open_fc_subpage";
     private static final String STATE_FC_TINT_EXPANDED = "fc_tint_expanded";
     private static final String STATE_FC_MASK_TINT_EXPANDED = "fc_mask_tint_expanded";
+    private static final String STATE_FC_GLOW_TINT_EXPANDED = "fc_glow_tint_expanded";
     private static final String COOLAPK_DEEP_PREFIX = "coolmarket://u/";
     private static final String COOLAPK_WEB_PREFIX = "https://www.coolapk.com/u/";
     private static final String LSPOSED_REPO_JSON_URL = "https://modules.lsposed.org/module/io.github.nicochanyo.c17fpoverlap.json";
@@ -297,6 +298,18 @@ public class MainActivity extends Activity {
     private boolean fcMaskColorPickerUserExpanded;
     private boolean fcMaskColorPickerExpanded;
     private boolean fcMaskColorPickerStateSynced;
+    private TextView tvFcCustomGlowColorSummary;
+    private View layoutFcGlowTintBadge;
+    private View vFcGlowTintSwatchDot;
+    private ImageView ivFcGlowTintChevron;
+    private Switch swFcCustomGlowColor;
+    private View dividerFcGlowTintPicker;
+    private View layoutFcGlowColorPickerWrap;
+    private CouiHsvColorPickerView fcGlowColorPicker;
+    private ValueAnimator fcGlowColorPickerAnimator;
+    private boolean fcGlowColorPickerUserExpanded;
+    private boolean fcGlowColorPickerExpanded;
+    private boolean fcGlowColorPickerStateSynced;
     private TextView tvSummaryOpacityBlur;
     private TextView tvSummaryHighlight;
     private final View[] fcMenuPanels = new View[3];
@@ -370,6 +383,8 @@ public class MainActivity extends Activity {
                 && savedInstanceState.getBoolean(STATE_FC_TINT_EXPANDED, false);
         fcMaskColorPickerUserExpanded = savedInstanceState != null
                 && savedInstanceState.getBoolean(STATE_FC_MASK_TINT_EXPANDED, false);
+        fcGlowColorPickerUserExpanded = savedInstanceState != null
+                && savedInstanceState.getBoolean(STATE_FC_GLOW_TINT_EXPANDED, false);
         final boolean fromThemeRecreate = (sPendingTabAfterRecreate >= TAB_LOCKSCREEN
                 && sPendingTabAfterRecreate <= TAB_ABOUT);
         if (sPendingTabAfterRecreate >= TAB_LOCKSCREEN && sPendingTabAfterRecreate <= TAB_ABOUT) {
@@ -446,6 +461,7 @@ public class MainActivity extends Activity {
         outState.putInt(STATE_FC_SUBPAGE, openFcMenuIndex);
         outState.putBoolean(STATE_FC_TINT_EXPANDED, fcColorPickerUserExpanded);
         outState.putBoolean(STATE_FC_MASK_TINT_EXPANDED, fcMaskColorPickerUserExpanded);
+        outState.putBoolean(STATE_FC_GLOW_TINT_EXPANDED, fcGlowColorPickerUserExpanded);
     }
 
     @Override
@@ -524,6 +540,13 @@ public class MainActivity extends Activity {
         }
         if (dividerFcMaskTintPicker != null) {
             dividerFcMaskTintPicker.animate().cancel();
+        }
+        if (fcGlowColorPickerAnimator != null) {
+            fcGlowColorPickerAnimator.cancel();
+            fcGlowColorPickerAnimator = null;
+        }
+        if (dividerFcGlowTintPicker != null) {
+            dividerFcGlowTintPicker.animate().cancel();
         }
         if (navPillMorphAnimator != null) {
             navPillMorphAnimator.cancel();
@@ -1704,6 +1727,14 @@ public class MainActivity extends Activity {
         dividerFcMaskTintPicker = findViewById(R.id.dividerFcMaskTintPicker);
         layoutFcMaskColorPickerWrap = findViewById(R.id.layoutFcMaskColorPickerWrap);
         fcMaskColorPicker = findViewById(R.id.fcMaskColorPicker);
+        tvFcCustomGlowColorSummary = findViewById(R.id.tvFcCustomGlowColorSummary);
+        layoutFcGlowTintBadge = findViewById(R.id.layoutFcGlowTintBadge);
+        vFcGlowTintSwatchDot = findViewById(R.id.vFcGlowTintSwatchDot);
+        ivFcGlowTintChevron = findViewById(R.id.ivFcGlowTintChevron);
+        swFcCustomGlowColor = findViewById(R.id.swFcCustomGlowColor);
+        dividerFcGlowTintPicker = findViewById(R.id.dividerFcGlowTintPicker);
+        layoutFcGlowColorPickerWrap = findViewById(R.id.layoutFcGlowColorPickerWrap);
+        fcGlowColorPicker = findViewById(R.id.fcGlowColorPicker);
 
         tvSummaryOpacityBlur = findViewById(R.id.tvSummaryOpacityBlur);
         tvSummaryHighlight = findViewById(R.id.tvSummaryHighlight);
@@ -2402,6 +2433,85 @@ public class MainActivity extends Activity {
             });
         }
 
+        View rowFcCustomGlowColor = findViewById(R.id.rowFcCustomGlowColor);
+        if (rowFcCustomGlowColor != null) {
+            rowFcCustomGlowColor.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (!data.fcEnabled || swFcCustomGlowColor == null) {
+                        return;
+                    }
+                    if (!data.fcCustomGlowEnabled) {
+                        fcGlowColorPickerUserExpanded = true;
+                        swFcCustomGlowColor.setChecked(true);
+                    } else {
+                        fcGlowColorPickerUserExpanded = !fcGlowColorPickerUserExpanded;
+                        if (livingFlowUi) {
+                            ColorOsLivingFlowEngine.performHaptic(v, ColorOsLivingFlowEngine.HapticKind.TICK);
+                        }
+                        setFcGlowColorPickerExpanded(fcGlowColorPickerUserExpanded, true);
+                        updateFcGlowTintHeaderUi(true);
+                    }
+                }
+            });
+        }
+        if (swFcCustomGlowColor != null) {
+            swFcCustomGlowColor.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(android.widget.CompoundButton buttonView, boolean isChecked) {
+                    if (suppressUiCallbacks) {
+                        return;
+                    }
+                    if (livingFlowUi) {
+                        ColorOsLivingFlowEngine.performHaptic(buttonView, ColorOsLivingFlowEngine.HapticKind.SWITCH);
+                    }
+                    if (isChecked) {
+                        data.fcCustomGlowEnabled = true;
+                        if (data.fcCustomGlowHasLast) {
+                            data.fcCustomGlowColor = data.fcCustomGlowLastColor;
+                        } else if (data.fcColorEnabled) {
+                            data.fcCustomGlowColor = data.fcColor;
+                        } else {
+                            data.fcCustomGlowColor = ConfigStore.DEF_CUSTOM_COLOR;
+                        }
+                        data.fcCustomGlowLastColor = data.fcCustomGlowColor;
+                        data.fcCustomGlowHasLast = true;
+                        fcGlowColorPickerUserExpanded = true;
+                    } else {
+                        data.fcCustomGlowLastColor = data.fcCustomGlowColor;
+                        data.fcCustomGlowHasLast = true;
+                        data.fcCustomGlowEnabled = false;
+                        data.fcCustomGlowColor = 0;
+                        fcGlowColorPickerUserExpanded = false;
+                    }
+                    persistImmediate();
+                }
+            });
+        }
+        if (fcGlowColorPicker != null) {
+            fcGlowColorPicker.setShowAlpha(true);
+            fcGlowColorPicker.setOnColorChangeListener(new CouiHsvColorPickerView.OnColorChangeListener() {
+                @Override
+                public void onColorChanged(int argbColor, boolean fromUser) {
+                    if (!fromUser || suppressUiCallbacks || !data.fcEnabled) {
+                        return;
+                    }
+                    data.fcCustomGlowEnabled = true;
+                    data.fcCustomGlowColor = argbColor;
+                    data.fcCustomGlowLastColor = argbColor;
+                    data.fcCustomGlowHasLast = true;
+                    updateFcGlowTintHeaderUi(false);
+                    persistSliderTick();
+                }
+
+                @Override
+                public void onTrackingStopped(int argbColor) {
+                    mainHandler.removeCallbacks(debouncedSync);
+                    syncRemoteAsync();
+                }
+            });
+        }
+
         findViewById(R.id.btnResetFc).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -2422,6 +2532,10 @@ public class MainActivity extends Activity {
                 data.fcCustomMaskColor = def.fcCustomMaskColor;
                 data.fcCustomMaskLastColor = def.fcCustomMaskLastColor;
                 data.fcCustomMaskHasLast = def.fcCustomMaskHasLast;
+                data.fcCustomGlowEnabled = def.fcCustomGlowEnabled;
+                data.fcCustomGlowColor = def.fcCustomGlowColor;
+                data.fcCustomGlowLastColor = def.fcCustomGlowLastColor;
+                data.fcCustomGlowHasLast = def.fcCustomGlowHasLast;
                 data.fcMatchCard = def.fcMatchCard;
                 data.fcRemoveIslandMask = def.fcRemoveIslandMask;
                 data.fcRemoveShadeMask = def.fcRemoveShadeMask;
@@ -3379,6 +3493,7 @@ public class MainActivity extends Activity {
         sheet.card.addView(scroll, scrollLp);
 
         int[] verTitles = new int[]{
+                R.string.changelog_v113_title,
                 R.string.changelog_v112_title,
                 R.string.changelog_v111_title,
                 R.string.changelog_v110_title,
@@ -3394,6 +3509,7 @@ public class MainActivity extends Activity {
                 R.string.changelog_v100_title
         };
         int[] verBodies = new int[]{
+                R.string.changelog_v113_body,
                 R.string.changelog_v112_body,
                 R.string.changelog_v111_body,
                 R.string.changelog_v110_body,
@@ -3515,7 +3631,7 @@ public class MainActivity extends Activity {
             //noinspection deprecation
             return pi.versionCode;
         } catch (Throwable ignored) {
-            return 1102;
+            return 1103;
         }
     }
 
@@ -3527,12 +3643,12 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {
         }
-        return "1.1.2";
+        return "1.1.3";
     }
 
     static String formatVerLabel(String ver) {
         if (ver == null || ver.trim().isEmpty()) {
-            return "v1.1.2";
+            return "v1.1.3";
         }
         String t = ver.trim();
         if (t.startsWith("v") || t.startsWith("V")) {
@@ -3747,7 +3863,7 @@ public class MainActivity extends Activity {
             out.versionName = !name.isEmpty() ? name : tag;
         }
         if (out.versionName == null || out.versionName.isEmpty()) {
-            out.versionName = "1.1.2";
+            out.versionName = "1.1.3";
         }
     }
 
@@ -5034,6 +5150,24 @@ public class MainActivity extends Activity {
             updateFcMaskTintHeaderUi(false);
             setFcMaskColorPickerExpanded(customMaskColorOn && fcMaskColorPickerUserExpanded, fcMaskColorPickerStateSynced);
 
+            boolean customGlowColorOn = data.fcCustomGlowEnabled;
+            if (!customGlowColorOn) {
+                fcGlowColorPickerUserExpanded = false;
+            }
+            if (swFcCustomGlowColor != null) {
+                swFcCustomGlowColor.setChecked(customGlowColorOn);
+            }
+            if (fcGlowColorPicker != null) {
+                int glowPickerColor = customGlowColorOn
+                        ? data.fcCustomGlowColor
+                        : (data.fcCustomGlowHasLast
+                                ? data.fcCustomGlowLastColor
+                                : (data.fcColorEnabled ? data.fcColor : ConfigStore.DEF_CUSTOM_COLOR));
+                fcGlowColorPicker.setColor(glowPickerColor);
+            }
+            updateFcGlowTintHeaderUi(false);
+            setFcGlowColorPickerExpanded(customGlowColorOn && fcGlowColorPickerUserExpanded, fcGlowColorPickerStateSynced);
+
             if (tvSummaryOpacityBlur != null) {
                 tvSummaryOpacityBlur.setText(getString(
                         R.string.summary_fc_opacity_blur_fmt,
@@ -5102,6 +5236,19 @@ public class MainActivity extends Activity {
                 animateChevron);
     }
 
+    private void updateFcGlowTintHeaderUi(boolean animateChevron) {
+        updateTintRowHeaderUi(
+                data.fcCustomGlowEnabled,
+                data.fcCustomGlowColor,
+                fcGlowColorPickerUserExpanded,
+                tvFcCustomGlowColorSummary,
+                R.string.pref_fc_custom_glow_color_summary,
+                layoutFcGlowTintBadge,
+                vFcGlowTintSwatchDot,
+                ivFcGlowTintChevron,
+                animateChevron);
+    }
+
     private void updateTintRowHeaderUi(boolean enabled, int colorArgb, boolean userExpanded, TextView tvSummary,
                                        int defaultSummaryRes, View badge, View swatchDot,
                                        ImageView chevron, boolean animateChevron) {
@@ -5165,7 +5312,7 @@ public class MainActivity extends Activity {
     private ValueAnimator animateColorPickerWrapExpanded(final View wrap, final View divider,
                                                          final ValueAnimator prevAnimator,
                                                          final boolean expand,
-                                                         final boolean isCardTint) {
+                                                         final int pickerSlot) {
         if (prevAnimator != null) {
             prevAnimator.cancel();
         }
@@ -5243,18 +5390,25 @@ public class MainActivity extends Activity {
 
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    if (isCardTint) {
+                    if (pickerSlot == 0) {
                         if (fcColorPickerAnimator == anim) {
                             fcColorPickerAnimator = null;
                         }
                         if (!cancelled && fcColorPickerExpanded) {
                             snapColorPickerWrapVisibility(wrap, divider, true);
                         }
-                    } else {
+                    } else if (pickerSlot == 1) {
                         if (fcMaskColorPickerAnimator == anim) {
                             fcMaskColorPickerAnimator = null;
                         }
                         if (!cancelled && fcMaskColorPickerExpanded) {
+                            snapColorPickerWrapVisibility(wrap, divider, true);
+                        }
+                    } else {
+                        if (fcGlowColorPickerAnimator == anim) {
+                            fcGlowColorPickerAnimator = null;
+                        }
+                        if (!cancelled && fcGlowColorPickerExpanded) {
                             snapColorPickerWrapVisibility(wrap, divider, true);
                         }
                     }
@@ -5314,18 +5468,25 @@ public class MainActivity extends Activity {
 
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    if (isCardTint) {
+                    if (pickerSlot == 0) {
                         if (fcColorPickerAnimator == anim) {
                             fcColorPickerAnimator = null;
                         }
                         if (!cancelled && !fcColorPickerExpanded) {
                             snapColorPickerWrapVisibility(wrap, divider, false);
                         }
-                    } else {
+                    } else if (pickerSlot == 1) {
                         if (fcMaskColorPickerAnimator == anim) {
                             fcMaskColorPickerAnimator = null;
                         }
                         if (!cancelled && !fcMaskColorPickerExpanded) {
+                            snapColorPickerWrapVisibility(wrap, divider, false);
+                        }
+                    } else {
+                        if (fcGlowColorPickerAnimator == anim) {
+                            fcGlowColorPickerAnimator = null;
+                        }
+                        if (!cancelled && !fcGlowColorPickerExpanded) {
                             snapColorPickerWrapVisibility(wrap, divider, false);
                         }
                     }
@@ -5359,7 +5520,7 @@ public class MainActivity extends Activity {
             return;
         }
         fcColorPickerAnimator = animateColorPickerWrapExpanded(
-                layoutFcColorPickerWrap, dividerFcTintPicker, fcColorPickerAnimator, expand, true);
+                layoutFcColorPickerWrap, dividerFcTintPicker, fcColorPickerAnimator, expand, 0);
     }
 
     private void setFcMaskColorPickerExpanded(final boolean expand, boolean animate) {
@@ -5385,7 +5546,33 @@ public class MainActivity extends Activity {
             return;
         }
         fcMaskColorPickerAnimator = animateColorPickerWrapExpanded(
-                layoutFcMaskColorPickerWrap, dividerFcMaskTintPicker, fcMaskColorPickerAnimator, expand, false);
+                layoutFcMaskColorPickerWrap, dividerFcMaskTintPicker, fcMaskColorPickerAnimator, expand, 1);
+    }
+
+    private void setFcGlowColorPickerExpanded(final boolean expand, boolean animate) {
+        if (layoutFcGlowColorPickerWrap == null) {
+            return;
+        }
+        final boolean curVisible = layoutFcGlowColorPickerWrap.getVisibility() == View.VISIBLE;
+        if (fcGlowColorPickerStateSynced && fcGlowColorPickerExpanded == expand
+                && fcGlowColorPickerAnimator == null && curVisible == expand) {
+            return;
+        }
+        fcGlowColorPickerStateSynced = true;
+        fcGlowColorPickerExpanded = expand;
+        if (!animate) {
+            if (fcGlowColorPickerAnimator != null) {
+                fcGlowColorPickerAnimator.cancel();
+                fcGlowColorPickerAnimator = null;
+            }
+            if (dividerFcGlowTintPicker != null) {
+                dividerFcGlowTintPicker.animate().cancel();
+            }
+            snapColorPickerWrapVisibility(layoutFcGlowColorPickerWrap, dividerFcGlowTintPicker, expand);
+            return;
+        }
+        fcGlowColorPickerAnimator = animateColorPickerWrapExpanded(
+                layoutFcGlowColorPickerWrap, dividerFcGlowTintPicker, fcGlowColorPickerAnimator, expand, 2);
     }
 
     private void syncPreviewView(FluidCloudPreviewView preview) {
@@ -5405,6 +5592,8 @@ public class MainActivity extends Activity {
                 data.fcColor,
                 data.fcCustomMaskEnabled,
                 data.fcCustomMaskColor,
+                data.fcCustomGlowEnabled,
+                data.fcCustomGlowColor,
                 data.fcRemoveIslandMask,
                 data.fcMatchCard,
                 data.fcMaskFollowMedia,

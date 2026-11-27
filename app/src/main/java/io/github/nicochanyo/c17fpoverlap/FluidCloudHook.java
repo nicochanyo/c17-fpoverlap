@@ -10,7 +10,6 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.RuntimeShader;
 import android.graphics.Shader;
@@ -23,7 +22,6 @@ import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewParent;
 import android.view.animation.PathInterpolator;
-import android.widget.ImageView;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
@@ -52,12 +50,6 @@ public final class FluidCloudHook {
     private static final String C_PLATFORM_BLUR_MGR = "com.oplus.systemui.notification.blur.NotificationPlatFormBlurParamsManager";
     private static final String C_INNER_SHADOW_PARAMS = "com.oplus.posteffect.params.InnerShadowParams";
     private static final String C_STROKE_PARAMS = "com.oplus.posteffect.params.GradientStrokeLineParams";
-    private static final String C_CAPSULE_ITEM = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleItemView";
-    private static final String C_CAPSULE_EAR = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleEarView";
-    private static final String C_CAPSULE_BG_VIEW = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleBackgroundView";
-    private static final String C_HELPER = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleBackgroundHelper";
-    private static final String C_SCRIM = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleScrimView";
-    private static final String C_GRAD_MASK_VIEW = "com.oplus.systemui.keyguard.gradientmask.view.GradientColorImageView";
     private static final String C_CUSTOM_ROW = "com.oplus.systemui.notification.row.NotificationBackgroundCustomRowHandler";
     private static final String C_CUSTOM_ROW_VIEW = "com.oplus.systemui.statusbar.notification.customcard.OplusCustomRow";
     private static final String C_BG_VIEW_EXT = "com.oplus.systemui.statusbar.notification.row.NotificationBackgroundViewExtImp";
@@ -81,6 +73,15 @@ public final class FluidCloudHook {
     private static final String C_NOTIF_AOD_BG_CHANGER = "com.oplus.systemui.notification.aod.notification.NotificationAodBackgroundChanger";
     private static final String C_MEDIA_SEEDLING = "com.oplus.systemui.media.seedling.MediaSeedling";
     private static final String C_LA_PLUGIN_FILTER = "com.oplus.systemui.statusbar.notification.livealert.data.repository.OplusLiveAlertFilterByPlugin";
+    private static final String C_CAPSULE_ITEM = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleItemView";
+    private static final String C_CAPSULE_EAR = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleEarView";
+    private static final String C_HELPER = "com.oplus.systemui.notification.lockscreen.capsule.CapsuleBackgroundHelper";
+    private static final String C_OVERLAY_BG_VIEW = "com.oplus.systemui.notification.row.overlay.NotificationOverlayBackgroundView";
+    private static final String C_OVERLAY_CTRL = "com.oplus.systemui.notification.row.overlay.OplusNotificationOverlayControllerImpl";
+    private static final String C_EXT_STATE_MGR = "com.oplus.systemui.notification.lockscreen.statemanager.LockScreenNotificationExtStateManager";
+    private static final String C_IMMERSIVE_VIEW_MGR = "com.oplus.systemui.notification.lockscreen.immersive.OplusImmersiveViewManager";
+    private static final String C_IMMERSIVE_CARD_CTRL = "com.oplus.systemui.notification.lockscreen.immersive.ImmersiveCardControl";
+    private static final String C_EXPANDABLE_VIEW_STATE_EX = "com.oplus.systemui.statusbar.notification.stack.OplusExpandableViewStateExImpl";
 
     // Clean neutral glass RGB matching Expanded Dynamic Island (0.10, 0.10, 0.12)
     private static final int CLEAN_GLASS_RGB = 0x1A1A1F;
@@ -88,8 +89,6 @@ public final class FluidCloudHook {
     private static final int AOD_WIDGET_RGB = 0x3D3D3D;
     private static final int AOD_WIDGET_ALPHA = 0x88;
 
-    private static final WeakIdentityMap<Object, Boolean> CAPSULE_CFG =
-            new WeakIdentityMap<>();
     private static final WeakIdentityMap<Object, Integer> ORIG_BLUR_RADIUS =
             new WeakIdentityMap<>();
     private static final WeakIdentityMap<Object, RowExtInfo> EXT_ROW_INFO =
@@ -104,6 +103,10 @@ public final class FluidCloudHook {
             new WeakIdentityMap<>();
     private static final WeakIdentityMap<Object, Boolean> MEDIA_SHADOW_SET =
             new WeakIdentityMap<>();
+    private static final WeakIdentityMap<Object, Boolean> NORMAL_STROKE_SET =
+            new WeakIdentityMap<>();
+    private static final WeakIdentityMap<Object, Boolean> NORMAL_SHADOW_SET =
+            new WeakIdentityMap<>();
     private static final Map<View, Boolean> MEDIA_SHADE_STATE =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final WeakIdentityMap<Object, Boolean> LOCK_CUSTOM_MIX_APPLIED =
@@ -111,10 +114,6 @@ public final class FluidCloudHook {
     private static final Map<View, Integer> LAST_CUSTOM_MIX_VER =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Integer> LAST_CUSTOM_MASK_VER =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<Object, Integer> LAST_HELPER_VER =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<Object, Integer> LAST_EAR_VER =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, int[]> LAST_MEDIA_STATE =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -129,6 +128,8 @@ public final class FluidCloudHook {
     private static final Map<Object, Boolean> ACTIVE_CAPSULE_HELPERS =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Boolean> ACTIVE_CAPSULE_EARS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Object, Integer> LAST_CAPSULE_AOD_KEY =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final WeakIdentityMap<Object, Object> NORMAL_BG_AOD_COLORS =
             new WeakIdentityMap<>();
@@ -158,10 +159,6 @@ public final class FluidCloudHook {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Boolean> NORMAL_GLOW_TINTED_ROWS =
             Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<View, Boolean> ACTIVE_GRAD_MASK_VIEWS =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<View, Integer> LAST_GRAD_MASK_HASH =
-            Collections.synchronizedMap(new WeakHashMap<>());
     private static final WeakIdentityMap<Object, CustomRowMaskSpec> CUSTOM_MASK_BY_META =
             new WeakIdentityMap<>();
     private static final WeakIdentityMap<Object, int[]> ORIG_META_GRAD_COLORS =
@@ -184,11 +181,11 @@ public final class FluidCloudHook {
                     LAST_CUSTOM_MASK_VER.remove(rowView);
                     LAST_CUSTOM_META_REF.remove(rowView);
                     LAST_DRIFT_CHECK_MS.remove(rowView);
+                    LAST_STUCK_IMM_POST_MS.remove(rowView);
                     LAST_ROW_IMMERSIVE_PROG.remove(rowView);
                     ORIG_ROW_IMMERSIVE_COLORS.remove(rowView);
                     CUSTOM_ROW_MASK_CACHE.remove(rowView);
-                    if (isMediaCustomRow(rowView) || sLastLockCustomRowIsMedia) {
-                        sLastLockCustomRowIsMedia = hasActiveMediaCustomRow();
+                    if (isMediaCustomRow(rowView)) {
                         DynamicIslandHook.bumpMediaColorVersion();
                         ConfigStore.HookConfig cfgNow = sLastFcConfig;
                         if (cfgNow != null) {
@@ -237,7 +234,6 @@ public final class FluidCloudHook {
     private static Constructor<?> sMixSingleCtor;
     private static Constructor<?> sMixMultiCtor;
     private static Constructor<?> sMixColorCtor;
-    private static volatile Object sStockCapsuleMix;
     private static volatile Object sStockCustomMix;
     private static volatile WeakReference<Object> sViewBlurManagerRef;
     private static volatile WeakReference<Object> sAodRepoRef;
@@ -258,7 +254,6 @@ public final class FluidCloudHook {
     private static final long AOD_ENTER_DURATION_MS = 550L;
     private static final long AOD_EXIT_DURATION_MS = 260L;
     private static volatile boolean sLoggedCustomAgslErr;
-    private static volatile boolean sLastLockCustomRowIsMedia;
     private static volatile boolean sMediaColorSyncPending;
     private static final AtomicInteger CUSTOM_ROW_HANDLER_ACTIVE_COUNT = new AtomicInteger();
     private static volatile boolean sAnyMetaRowMapped;
@@ -277,8 +272,6 @@ public final class FluidCloudHook {
     private static volatile Method sBgViewGetExtM;
     private static volatile Method sExtGetBgViewM;
     private static volatile Method sExtGetProxyM;
-    private static volatile Object sCardTypeCapsule;
-    private static volatile Object sCardTypeCapsuleEar;
     private static volatile Object sCardTypeCustom;
 
     private static final ThreadLocal<RuntimeShader> TL_CUSTOM_GLOW_SHADER = new ThreadLocal<>();
@@ -290,10 +283,19 @@ public final class FluidCloudHook {
     private static final ThreadLocal<Float> TL_IMMERSIVE_MASK_FADE = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> TL_IN_BG_DRAW_BEFORE = new ThreadLocal<>();
     private static final ThreadLocal<Integer> TL_CUSTOM_ROW_HANDLER_DEPTH = new ThreadLocal<>();
+    private static final ThreadLocal<View> TL_BLUR_PARAM_OWNER_VIEW = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> TL_IN_IMMERSIVE_RESET = new ThreadLocal<>();
+    private static final Map<View, Long> LAST_STUCK_IMM_POST_MS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, WeakReference<View>> OVERLAY_TO_AUTHOR_ROW =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static volatile int sLockExtState = -1;
+    private static volatile boolean sLockExtStateTracked;
+    private static volatile long sLastExitImmersiveMs;
+    private static volatile boolean sImmersiveAnimTagProbed;
+    private static volatile int sImmersiveAnimTag;
     private static volatile Method sUpdateDrawableMetaColorM;
     private static volatile Method sApplyGradientColorsWithFadeM;
-    private static volatile Field sGradMaskPaintField;
-    private static volatile boolean sGradMaskPaintProbed;
 
     private static final class CustomRowMaskSpec {
         final int rgb;
@@ -498,14 +500,7 @@ public final class FluidCloudHook {
     public static void install(ClassLoader cl, ConfigStore.HookConfig cfg) {
         sLastFcConfig = cfg;
         int count = 0;
-        if (hookScrim(cl, cfg)) count++;
-        if (hookBlurProxy(cl, cfg)) count++;
         if (hookViewBlurRequireProxy(cl, cfg)) count++;
-        if (hookScrimView(cl, cfg)) count++;
-        if (hookFallbackColor(cl, cfg)) count++;
-        if (hookDimEffect(cl, cfg)) count++;
-        if (hookCapsuleEar(cl, cfg)) count++;
-        if (hookKeyguardCapsuleMask(cl, cfg)) count++;
         if (hookMix(cl, cfg)) count++;
         if (hookBottomHighlight(cl, cfg)) count++;
         if (hookMediaCarouselHighlight(cl, cfg)) count++;
@@ -513,12 +508,219 @@ public final class FluidCloudHook {
         if (hookCustomRowView(cl, cfg)) count++;
         if (hookCustomRowBgDraw(cl, cfg)) count++;
         if (hookMetaBall(cl, cfg)) count++;
-        if (hookLiveCapsuleRefresh(cl, cfg)) count++;
         if (hookAodTransition(cl, cfg)) count++;
         if (hookNormalNotifAod(cl, cfg)) count++;
         if (hookLiveAlertDebugFilterCache(cl, cfg)) count++;
         if (hookLockNotifHighlight(cl, cfg)) count++;
-        cfg.note("FluidCloud hooks installed: " + count + "/20");
+        if (hookCapsuleAodLight(cl, cfg)) count++;
+        if (hookNotificationOverlayController(cl, cfg)) count++;
+        if (hookLockExtState(cl, cfg)) count++;
+        cfg.note("FluidCloud hooks installed: " + count + "/15");
+    }
+
+    private static View findEnclosingCapsuleItem(View start) {
+        View cur = start;
+        for (int depth = 0; depth < 16 && cur != null; depth++) {
+            if (C_CAPSULE_ITEM.equals(cur.getClass().getName())) {
+                return cur;
+            }
+            ViewParent p = cur.getParent();
+            cur = (p instanceof View) ? (View) p : null;
+        }
+        return null;
+    }
+
+    private static void captureOrigBlurCfgLightIfIdle(Object proxy) {
+        if (proxy == null || sVisualAodTransitionPending
+                || sAodVisualAnimatorRunning || sVisualAodControlled) {
+            return;
+        }
+        Object blurCfg = callNoArg(proxy, "getBlurConfig");
+        if (blurCfg == null || ORIG_BLUR_CFG_LIGHT.get(blurCfg) != null) {
+            return;
+        }
+        Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
+        Object isp = callNoArg(blurCfg, "getInnerShadowParams");
+        if (stroke == null && isp == null) {
+            return;
+        }
+        float near = stroke != null ? readFloatField(stroke, "strokeLineAlphaNear", 0.40f) : 0.40f;
+        float far = stroke != null ? readFloatField(stroke, "strokeLineAlphaFar", 0.80f) : 0.80f;
+        float oMax = isp != null ? readFloatField(isp, "offsetShadowMaxAlpha", 0.10f) : 0.10f;
+        float oMin = isp != null ? readFloatField(isp, "offsetShadowMinAlpha", 0.0f) : 0.0f;
+        float noOff = isp != null ? readFloatField(isp, "noOffsetShadowAlpha", 0.10f) : 0.10f;
+        if (near >= 0.10f && far >= 0.20f) {
+            ORIG_BLUR_CFG_LIGHT.put(blurCfg, new float[]{near, far, oMax, oMin, noOff});
+        }
+    }
+
+    private static void captureCapsuleOrigLight(Object holder) {
+        if (holder == null) {
+            return;
+        }
+        Object proxy = readField(holder, "viewBlurProxy");
+        Object smoothProxy = readField(holder, "smoothSharedViewBlurProxy");
+        captureOrigBlurCfgLightIfIdle(proxy);
+        if (smoothProxy != null && smoothProxy != proxy) {
+            captureOrigBlurCfgLightIfIdle(smoothProxy);
+        }
+    }
+
+    private static void applyCapsuleProxyAodLightOnly(ClassLoader cl, Object proxy,
+                                                      float easedAod, boolean endpoint) {
+        if (proxy == null) {
+            return;
+        }
+        Object blurCfg = callNoArg(proxy, "getBlurConfig");
+        if (blurCfg == null) {
+            return;
+        }
+        applyAodToBlurConfigLight(blurCfg, true, easedAod);
+        if (!endpoint) {
+            Object pbd = resolvePlatformBlurDrawable(cl, proxy);
+            Object bd = pbd != null ? callNoArg(pbd, "getBlurDrawable") : null;
+            if (bd != null) {
+                Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
+                if (stroke != null) {
+                    callSetter(bd, "setGradientStrokeLineParams", C_STROKE_PARAMS, cl, stroke);
+                }
+                Object isp = callNoArg(blurCfg, "getInnerShadowParams");
+                if (isp != null) {
+                    callSetter(bd, "setInnerShadowParams", C_INNER_SHADOW_PARAMS, cl, isp);
+                }
+                if (bd instanceof Drawable) {
+                    ((Drawable) bd).invalidateSelf();
+                }
+                if (pbd instanceof Drawable) {
+                    ((Drawable) pbd).invalidateSelf();
+                }
+                return;
+            }
+        }
+        callNoArg(proxy, "applyBlurConfig");
+    }
+
+    private static void applyCapsuleHolderAodLightOnly(ClassLoader cl, Object holder,
+                                                       float easedAod, boolean endpoint) {
+        if (holder == null) {
+            return;
+        }
+        Object proxy = readField(holder, "viewBlurProxy");
+        Object smoothProxy = readField(holder, "smoothSharedViewBlurProxy");
+        applyCapsuleProxyAodLightOnly(cl, proxy, easedAod, endpoint);
+        if (smoothProxy != null && smoothProxy != proxy) {
+            applyCapsuleProxyAodLightOnly(cl, smoothProxy, easedAod, endpoint);
+        }
+    }
+
+    private static boolean hookCapsuleAodLight(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
+        boolean ok = false;
+        try {
+            Class<?> helperCls = loadClass(C_HELPER, cl);
+            if (helperCls != null) {
+                Method mStroke = findMethod(helperCls, "setStrokeAndShadowAlpha",
+                        float.class, float.class, Float.class);
+                if (mStroke != null) {
+                    XposedCompat.hookMethod(mStroke, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (param.thisObject != null
+                                    && !Boolean.TRUE.equals(ACTIVE_CAPSULE_HELPERS.get(param.thisObject))) {
+                                ACTIVE_CAPSULE_HELPERS.put(param.thisObject, Boolean.TRUE);
+                            }
+                            if (cfg.isFcEnabled() && (sVisualAodTransitionPending
+                                    || sAodVisualAnimatorRunning
+                                    || sVisualAodControlled
+                                    || resolveLiveAodProgress(param.thisObject) > 0.001f)) {
+                                captureCapsuleOrigLight(param.thisObject);
+                                param.setResult(null);
+                            }
+                        }
+                    });
+                    ok = true;
+                }
+
+                Method mDrawBg = findMethod(helperCls, "drawCapsuleBg", View.class, Canvas.class);
+                if (mDrawBg != null) {
+                    XposedCompat.hookMethod(mDrawBg, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            Object helper = param.thisObject;
+                            if (helper == null) {
+                                return;
+                            }
+                            if (!Boolean.TRUE.equals(ACTIVE_CAPSULE_HELPERS.get(helper))) {
+                                ACTIVE_CAPSULE_HELPERS.put(helper, Boolean.TRUE);
+                            }
+                            float rawAod = resolveLiveAodProgress(helper);
+                            if (rawAod <= 0.001f && !sVisualAodTransitionPending
+                                    && !sAodVisualAnimatorRunning && !sVisualAodControlled) {
+                                captureCapsuleOrigLight(helper);
+                                if (LAST_CAPSULE_AOD_KEY.remove(helper) != null) {
+                                    applyCapsuleHolderAodLightOnly(cl, helper, 0.0f, true);
+                                }
+                                return;
+                            }
+                            if (cfg.isFcEnabled() && rawAod > 0.001f) {
+                                boolean ep = rawAod >= 0.999f;
+                                int aodKey = (ep ? 512 : 0) + Math.round(rawAod * 255f);
+                                Integer prev = LAST_CAPSULE_AOD_KEY.get(helper);
+                                if (prev == null || prev != aodKey) {
+                                    LAST_CAPSULE_AOD_KEY.put(helper, aodKey);
+                                    applyCapsuleHolderAodLightOnly(cl, helper, easeAodProgress(rawAod), ep);
+                                }
+                            }
+                        }
+                    });
+                    ok = true;
+                }
+            }
+        } catch (Throwable t) {
+            cfg.note("FluidCloud capsule AOD light helper hook err: " + t);
+        }
+
+        try {
+            Class<?> earCls = loadClass(C_CAPSULE_EAR, cl);
+            if (earCls != null) {
+                Method mEarDraw = XposedCompat.findDeclaredMethod(earCls, "onDraw", Canvas.class);
+                if (mEarDraw != null) {
+                    XposedCompat.hookMethod(mEarDraw, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!(param.thisObject instanceof View)) {
+                                return;
+                            }
+                            View earView = (View) param.thisObject;
+                            if (!Boolean.TRUE.equals(ACTIVE_CAPSULE_EARS.get(earView))) {
+                                ACTIVE_CAPSULE_EARS.put(earView, Boolean.TRUE);
+                            }
+                            float rawAod = resolveLiveAodProgress(null);
+                            if (rawAod <= 0.001f && !sVisualAodTransitionPending
+                                    && !sAodVisualAnimatorRunning && !sVisualAodControlled) {
+                                captureCapsuleOrigLight(earView);
+                                if (LAST_CAPSULE_AOD_KEY.remove(earView) != null) {
+                                    applyCapsuleHolderAodLightOnly(cl, earView, 0.0f, true);
+                                }
+                                return;
+                            }
+                            if (cfg.isFcEnabled() && rawAod > 0.001f) {
+                                boolean ep = rawAod >= 0.999f;
+                                int aodKey = (ep ? 512 : 0) + Math.round(rawAod * 255f);
+                                Integer prev = LAST_CAPSULE_AOD_KEY.get(earView);
+                                if (prev == null || prev != aodKey) {
+                                    LAST_CAPSULE_AOD_KEY.put(earView, aodKey);
+                                    applyCapsuleHolderAodLightOnly(cl, earView, easeAodProgress(rawAod), ep);
+                                }
+                            }
+                        }
+                    });
+                    ok = true;
+                }
+            }
+        } catch (Throwable t) {
+            cfg.note("FluidCloud capsule ear AOD light hook err: " + t);
+        }
+        return ok;
     }
 
     private static boolean hookLiveAlertDebugFilterCache(ClassLoader cl, final ConfigStore.HookConfig cfg) {
@@ -634,7 +836,7 @@ public final class FluidCloudHook {
                 continue;
             }
             if (onLockSurface) {
-                if (rowView.getVisibility() == View.VISIBLE) {
+                if (rowView.isShown()) {
                     return true;
                 }
             } else {
@@ -657,22 +859,10 @@ public final class FluidCloudHook {
                 sMediaColorSyncPending = false;
                 LAST_DRIFT_CHECK_MS.clear();
                 if (cfg.isFcEnabled() && (cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()
-                        || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled())) {
+                        || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled()
+                        || cfg.isFcCustomGlowEnabled())) {
                     ClassLoader cl = sPrimaryCl;
                     Set<View> rows = collectActiveCustomRows(cl);
-                    boolean anyLockMedia = false;
-                    for (View rowView : rows) {
-                        if (rowView != null && rowView.isAttachedToWindow()) {
-                            Object mgr = readField(rowView, "viewBlurManager");
-                            if (isCustomOnLockscreen(mgr, null)
-                                    && rowView.getVisibility() == View.VISIBLE
-                                    && isMediaCustomRow(rowView)) {
-                                anyLockMedia = true;
-                                break;
-                            }
-                        }
-                    }
-                    sLastLockCustomRowIsMedia = anyLockMedia;
                     float liveAod = resolveLiveAodProgress(null);
                     for (View rowView : rows) {
                         if (rowView == null || !rowView.isAttachedToWindow()) {
@@ -683,8 +873,8 @@ public final class FluidCloudHook {
                         LAST_CUSTOM_MASK_VER.remove(rowView);
                         Object mgr = readField(rowView, "viewBlurManager");
                         ClassLoader effCl = cl != null ? cl : rowView.getClass().getClassLoader();
-                        if (isCustomOnLockscreen(mgr, null) && cfg.isFcColorEnabled()) {
-                            syncCustomRowLockMix(effCl, rowView, cfg, liveAod, true);
+                        if (isCustomOnLockscreen(mgr, null)) {
+                            syncCustomRowLockMix(effCl, rowView, cfg, liveAod, false);
                         }
                         if (!isCustomOnLockscreen(mgr, null) || !isRowInImmersiveFade(rowView)) {
                             syncCustomRowMask(effCl, rowView, mgr, cfg, false);
@@ -697,46 +887,6 @@ public final class FluidCloudHook {
                         }
                         DynamicIslandHook.invalidateMultiLightViewsInTree(rowView);
                         rowView.invalidate();
-                    }
-                    ArrayList<View> gradMasks;
-                    synchronized (ACTIVE_GRAD_MASK_VIEWS) {
-                        gradMasks = ACTIVE_GRAD_MASK_VIEWS.isEmpty()
-                                ? new ArrayList<View>(0)
-                                : new ArrayList<>(ACTIVE_GRAD_MASK_VIEWS.keySet());
-                    }
-                    for (int i = 0, n = gradMasks.size(); i < n; i++) {
-                        View v = gradMasks.get(i);
-                        if (v != null && v.isAttachedToWindow()) {
-                            v.invalidate();
-                        }
-                    }
-                    if (cfg.isFcColorEnabled() && isCurrentlyOnLockscreen()) {
-                        ArrayList<Object> helpers;
-                        synchronized (ACTIVE_CAPSULE_HELPERS) {
-                            helpers = ACTIVE_CAPSULE_HELPERS.isEmpty()
-                                    ? new ArrayList<Object>(0)
-                                    : new ArrayList<>(ACTIVE_CAPSULE_HELPERS.keySet());
-                        }
-                        for (int i = 0, n = helpers.size(); i < n; i++) {
-                            Object h = helpers.get(i);
-                            if (h != null) {
-                                LAST_HELPER_VER.remove(h);
-                                syncHelperBlurProxies(cl, h, cfg, liveAod, true);
-                            }
-                        }
-                        ArrayList<View> ears;
-                        synchronized (ACTIVE_CAPSULE_EARS) {
-                            ears = ACTIVE_CAPSULE_EARS.isEmpty()
-                                    ? new ArrayList<View>(0)
-                                    : new ArrayList<>(ACTIVE_CAPSULE_EARS.keySet());
-                        }
-                        for (int i = 0, n = ears.size(); i < n; i++) {
-                            View ear = ears.get(i);
-                            if (ear != null && ear.isAttachedToWindow()) {
-                                LAST_EAR_VER.remove(ear);
-                                syncHelperBlurProxies(cl, ear, cfg, liveAod, true);
-                            }
-                        }
                     }
                 }
 
@@ -799,18 +949,13 @@ public final class FluidCloudHook {
         return 0;
     }
 
-    private static int computeHelperKey(ConfigStore.HookConfig cfg, Object helperOrView, float rawAodProg) {
-        int mediaBit = (cfg.isFcColorEnabled()
-                && shouldSuppressCapsuleCustomColor(resolveHelperView(helperOrView), cfg)) ? 1 : 0;
-        return (((cfg.getFcVersion() * 31 + cfg.getFcOpacityInt()) * 2 + mediaBit) * 512)
-                + Math.round(clamp01(rawAodProg) * 255f);
-    }
-
     private static int computeCustomMixKey(ConfigStore.HookConfig cfg, View rowView, float rawAodProg) {
         int immBucket = resolveImmBucket(readRowImmersiveProgress(rowView));
         int mediaBit = (cfg.isFcColorEnabled() && shouldSuppressLockCustomColor(rowView, cfg)) ? 1 : 0;
         int h = cfg.getFcVersion();
+        h = h * 31 + cfg.getFcOpacityInt();
         h = h * 31 + cfg.getFcImmersiveOpacityInt();
+        h = h * 31 + (cfg.isFcColorEnabled() ? cfg.getFcColor() : 0);
         h = h * 31 + immBucket;
         h = h * 2 + mediaBit;
         return h * 512 + Math.round(clamp01(rawAodProg) * 255f);
@@ -848,7 +993,8 @@ public final class FluidCloudHook {
         int immBucket = resolveImmBucket(readRowImmersiveProgress(rowView));
         boolean isMedia = isMediaCustomRow(rowView);
         int mediaVer = (isMedia || cfg.isFcMaskFollowMedia() || cfg.isFcNonMediaMaskEnabled()
-                || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled())
+                || cfg.isFcColorEnabled() || cfg.isFcCustomMaskEnabled()
+                || cfg.isFcCustomGlowEnabled())
                 ? DynamicIslandHook.getMediaColorVersion() : 0;
         return (((long) fcVer) << 44)
                 | (onLock ? (1L << 43) : 0L)
@@ -1019,41 +1165,6 @@ public final class FluidCloudHook {
         return cfg.isFcNonMediaMaskEnabled() && DynamicIslandHook.hasActiveLockMediaFluidCloud();
     }
 
-    private static View resolveHelperView(Object helperOrView) {
-        if (helperOrView instanceof View) {
-            return (View) helperOrView;
-        }
-        if (helperOrView == null) {
-            return null;
-        }
-        Object proxy = readField(helperOrView, "viewBlurProxy");
-        if (proxy == null) {
-            proxy = readField(helperOrView, "smoothSharedViewBlurProxy");
-        }
-        Object vObj = proxy != null ? callNoArg(proxy, "getView") : null;
-        return vObj instanceof View ? (View) vObj : null;
-    }
-
-    private static boolean isCapsuleMediaView(View view) {
-        if (view == null) {
-            return false;
-        }
-        View capsuleItem = findEnclosingCapsuleItem(view);
-        View root = capsuleItem != null ? capsuleItem : view;
-        return DynamicIslandHook.isViewContainingMedia(root);
-    }
-
-    private static boolean shouldSuppressCapsuleCustomColor(View capsuleView, ConfigStore.HookConfig cfg) {
-        if (capsuleView != null) {
-            if (isCapsuleMediaView(capsuleView)) {
-                return true;
-            }
-            return cfg.isFcNonMediaMaskEnabled() && DynamicIslandHook.hasActiveLockMediaFluidCloud();
-        }
-        return DynamicIslandHook.hasActiveLockMediaFluidCloud()
-                && (cfg.isFcNonMediaMaskEnabled() || DynamicIslandHook.hasActiveLockMiniMedia());
-    }
-
     private static boolean hasSurfaceMediaActive(boolean isMedia, boolean onLock) {
         if (isMedia) {
             return true;
@@ -1073,140 +1184,6 @@ public final class FluidCloudHook {
             return false;
         }
         return !(cfg.isFcNonMediaMaskEnabled() && hasSurfaceMediaActive(false, onLock));
-    }
-
-    private static boolean hookScrim(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> helperCls = loadClass(C_HELPER, cl);
-            Method m = findMethod(helperCls, "setScrimAlpha", float.class);
-            if (m == null) {
-                cfg.note("FluidCloud: missing setScrimAlpha");
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    if (param.thisObject != null
-                            && !Boolean.TRUE.equals(ACTIVE_CAPSULE_HELPERS.get(param.thisObject))) {
-                        ACTIVE_CAPSULE_HELPERS.put(param.thisObject, Boolean.TRUE);
-                    }
-                    if (param.args.length > 0 && param.args[0] instanceof Float) {
-                        float aodProg = clamp01((Float) param.args[0]);
-                        if (!sVisualAodControlled && !sAodVisualAnimatorRunning
-                                && !sVisualAodTransitionPending) {
-                            sPanoramicAodProgress = aodProg;
-                            resolveLiveAodProgress(param.thisObject);
-                        }
-                        if (cfg.isFcEnabled()) {
-                            param.args[0] = 0.0f;
-                        }
-                    }
-                }
-
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (cfg.isFcEnabled()) {
-                        Object sp = readField(param.thisObject, "scrimPaint");
-                        if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
-                            ((Paint) sp).setAlpha(0);
-                        }
-                        zeroMetaColorSafely(callNoArg(param.thisObject, "getBlurDrawable"));
-                        float liveAod = resolveLiveAodProgress(param.thisObject);
-                        int helperKey = computeHelperKey(cfg, param.thisObject, liveAod);
-                        Integer prev = LAST_HELPER_VER.get(param.thisObject);
-                        if (prev != null && (sAodVisualAnimatorRunning || prev == helperKey)) {
-                            return;
-                        }
-                        LAST_HELPER_VER.put(param.thisObject, helperKey);
-                        syncHelperBlurProxies(cl, param.thisObject, cfg, liveAod, true);
-                    }
-                }
-            });
-
-            Method mStroke = findMethod(helperCls, "setStrokeAndShadowAlpha",
-                    float.class, float.class, Float.class);
-            if (mStroke != null) {
-                XposedCompat.hookMethod(mStroke, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        if (param.thisObject != null
-                                && !Boolean.TRUE.equals(ACTIVE_CAPSULE_HELPERS.get(param.thisObject))) {
-                            ACTIVE_CAPSULE_HELPERS.put(param.thisObject, Boolean.TRUE);
-                        }
-                        if (cfg.isFcEnabled() && (sVisualAodTransitionPending
-                                || sAodVisualAnimatorRunning
-                                || sVisualAodControlled
-                                || resolveLiveAodProgress(param.thisObject) > 0.001f)) {
-                            param.setResult(null);
-                        }
-                    }
-                });
-            }
-            try {
-                ClassLoader sysCl = helperCls.getClassLoader();
-                Class<?> bgViewCls = Class.forName(C_CAPSULE_BG_VIEW, false, sysCl);
-                Method mBgScrim = findMethod(bgViewCls, "setScrimAlpha", float.class);
-                if (mBgScrim != null) {
-                    XposedCompat.hookMethod(mBgScrim, new XC_MethodHook() {
-                        @Override
-                        protected void beforeHookedMethod(MethodHookParam param) {
-                            if (param.args.length > 0 && param.args[0] instanceof Float) {
-                                float aodProg = clamp01((Float) param.args[0]);
-                                if (!sVisualAodControlled && !sAodVisualAnimatorRunning
-                                        && !sVisualAodTransitionPending) {
-                                    sPanoramicAodProgress = aodProg;
-                                    resolveLiveAodProgress(null);
-                                }
-                                if (cfg.isFcEnabled()) {
-                                    param.args[0] = 0.0f;
-                                }
-                            }
-                        }
-                    });
-                }
-            } catch (Throwable ignored) {
-            }
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud setScrimAlpha hook err: " + t);
-            return false;
-        }
-    }
-
-    private static boolean hookBlurProxy(ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> helperCls = loadClass(C_HELPER, cl);
-            Method m = findMethod(helperCls, "requireBlurProxyForView", View.class);
-            if (m == null) {
-                cfg.note("FluidCloud: missing requireBlurProxyForView");
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (param.thisObject != null
-                            && C_HELPER.equals(param.thisObject.getClass().getName())
-                            && !Boolean.TRUE.equals(ACTIVE_CAPSULE_HELPERS.get(param.thisObject))) {
-                        ACTIVE_CAPSULE_HELPERS.put(param.thisObject, Boolean.TRUE);
-                    }
-                    Object proxy = param.getResult();
-                    if (proxy == null) {
-                        return;
-                    }
-                    Object blurCfg = getProxyBlurConfig(proxy);
-                    if (blurCfg != null) {
-                        CAPSULE_CFG.put(blurCfg, Boolean.TRUE);
-                        if (applyScaledBlurRadius(blurCfg, cfg, true)) {
-                            callNoArg(proxy, "applyBlurConfig");
-                        }
-                    }
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud requireBlurProxyForView hook err: " + t);
-            return false;
-        }
     }
 
     private static Object getProxyBlurConfig(Object proxy) {
@@ -1299,16 +1276,8 @@ public final class FluidCloudHook {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void ensureCardTypeConstants(Class<?> cardTypeCls) {
-        if (cardTypeCls == null || (sCardTypeCapsule != null && sCardTypeCustom != null)) {
+        if (cardTypeCls == null || sCardTypeCustom != null) {
             return;
-        }
-        try {
-            sCardTypeCapsule = Enum.valueOf((Class<Enum>) cardTypeCls, "CAPSULE");
-        } catch (Throwable ignored) {
-        }
-        try {
-            sCardTypeCapsuleEar = Enum.valueOf((Class<Enum>) cardTypeCls, "CAPSULE_EAR");
-        } catch (Throwable ignored) {
         }
         try {
             sCardTypeCustom = Enum.valueOf((Class<Enum>) cardTypeCls, "CUSTOM");
@@ -1335,22 +1304,30 @@ public final class FluidCloudHook {
             XposedCompat.hookDirect(m, new XposedInterface.Hooker() {
                 @Override
                 public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                    Object arg0 = chain.getArg(0);
+                    View owner = arg0 instanceof View ? (View) arg0 : null;
                     Object ct = chain.getArg(1);
                     Object mode = chain.getArg(3);
                     Object mgr = chain.getThisObject();
-                    boolean isCap = ct != null && (ct == sCardTypeCapsule || ct == sCardTypeCapsuleEar);
                     boolean isCustom = ct != null && ct == sCardTypeCustom;
-                    Object proxy = chain.proceed();
-                    if ((isCap || isCustom) && proxy != null) {
+                    View prevOwner = TL_BLUR_PARAM_OWNER_VIEW.get();
+                    if (owner != null) {
+                        TL_BLUR_PARAM_OWNER_VIEW.set(owner);
+                    }
+                    Object proxy;
+                    try {
+                        proxy = chain.proceed();
+                    } finally {
+                        if (prevOwner != null) {
+                            TL_BLUR_PARAM_OWNER_VIEW.set(prevOwner);
+                        } else {
+                            TL_BLUR_PARAM_OWNER_VIEW.remove();
+                        }
+                    }
+                    if (isCustom && proxy != null) {
                         Object blurCfg = getProxyBlurConfig(proxy);
-                        if (blurCfg != null) {
-                            if (isCap) {
-                                CAPSULE_CFG.put(blurCfg, Boolean.TRUE);
-                            }
-                            boolean enableScale = isCap || isCustomOnLockscreen(mgr, mode);
-                            if (applyScaledBlurRadius(blurCfg, cfg, enableScale)) {
-                                callNoArg(proxy, "applyBlurConfig");
-                            }
+                        if (blurCfg != null && applyScaledBlurRadius(blurCfg, cfg, isCustomOnLockscreen(mgr, mode))) {
+                            callNoArg(proxy, "applyBlurConfig");
                         }
                     }
                     return proxy;
@@ -1359,299 +1336,6 @@ public final class FluidCloudHook {
             return true;
         } catch (Throwable t) {
             cfg.note("FluidCloud ViewBlurManager#requireBlurProxyForView hook err: " + t);
-            return false;
-        }
-    }
-
-    private static boolean hookScrimView(ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> scrimCls = loadClass(C_SCRIM, cl);
-            Method m = findMethod(scrimCls, "setScrimAlpha", float.class);
-            if (m == null) {
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    if (param.args.length > 0 && param.args[0] instanceof Float) {
-                        if (!sVisualAodControlled && !sAodVisualAnimatorRunning
-                                && !sVisualAodTransitionPending) {
-                            sPanoramicAodProgress = clamp01((Float) param.args[0]);
-                        }
-                        if (cfg.isFcEnabled()) {
-                            param.args[0] = 0.0f;
-                        }
-                    }
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud CapsuleScrimView hook err: " + t);
-            return false;
-        }
-    }
-
-    private static boolean hookFallbackColor(ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> helperCls = loadClass(C_HELPER, cl);
-            Method m = findMethod(helperCls, "getBackgroundColor");
-            if (m == null) {
-                cfg.note("FluidCloud: missing getBackgroundColor");
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (!cfg.isFcEnabled() || !cfg.isFcLockTintOrMaskModified()) {
-                        return;
-                    }
-                    Object res = param.getResult();
-                    if (!(res instanceof Integer)) {
-                        return;
-                    }
-                    int argb = (Integer) res;
-                    int a = (argb >>> 24) & 0xFF;
-                    boolean useCustom = cfg.isFcColorEnabled()
-                            && !shouldSuppressCapsuleCustomColor(resolveHelperView(param.thisObject), cfg);
-                    int custom = useCustom ? cfg.getFcColor() : 0;
-                    float colorAlpha = useCustom ? ConfigStore.colorAlphaScale(custom) : 1.0f;
-                    int newA = clampAlpha(Math.round(a * cfg.getFcOpacity() * colorAlpha));
-                    int rgb = useCustom ? (custom & 0x00FFFFFF) : CLEAN_GLASS_RGB;
-                    param.setResult((newA << 24) | rgb);
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud getBackgroundColor hook err: " + t);
-            return false;
-        }
-    }
-
-    private static boolean hookDimEffect(ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> itemCls = loadClass(C_CAPSULE_ITEM, cl);
-            Method m = findMethod(itemCls, "setDimEffect", float.class);
-            if (m == null) {
-                cfg.note("FluidCloud: missing setDimEffect");
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    if (param.args.length > 0 && param.args[0] instanceof Float
-                            && !sVisualAodControlled && !sAodVisualAnimatorRunning
-                            && !sVisualAodTransitionPending) {
-                        sPanoramicAodProgress = clamp01((Float) param.args[0]);
-                    }
-                    if (cfg.isFcEnabled()) {
-                        if (Build.VERSION.SDK_INT >= 31 && param.thisObject instanceof View) {
-                            ((View) param.thisObject).setRenderEffect(null);
-                        }
-                        param.setResult(null);
-                    }
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud setDimEffect hook err: " + t);
-            return false;
-        }
-    }
-
-    private static boolean hookCapsuleEar(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> earCls = loadClass(C_CAPSULE_EAR, cl);
-            if (earCls == null) {
-                return false;
-            }
-            boolean ok = false;
-            Method mAlpha = findMethod(earCls, "setScrimAlpha", float.class);
-            if (mAlpha != null) {
-                XposedCompat.hookMethod(mAlpha, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        if (param.thisObject instanceof View
-                                && !Boolean.TRUE.equals(ACTIVE_CAPSULE_EARS.get(param.thisObject))) {
-                            ACTIVE_CAPSULE_EARS.put((View) param.thisObject, Boolean.TRUE);
-                        }
-                        if (param.args.length > 0 && param.args[0] instanceof Float) {
-                            if (!sVisualAodControlled && !sAodVisualAnimatorRunning
-                                    && !sVisualAodTransitionPending) {
-                                sPanoramicAodProgress = clamp01((Float) param.args[0]);
-                            }
-                            if (cfg.isFcEnabled()) {
-                                param.args[0] = 0.0f;
-                            }
-                        }
-                    }
-
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        if (cfg.isFcEnabled()) {
-                            Object sp = readField(param.thisObject, "scrimPaint");
-                            if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
-                                ((Paint) sp).setAlpha(0);
-                            }
-                        }
-                    }
-                });
-                ok = true;
-            }
-
-            Method mDraw = XposedCompat.findDeclaredMethod(earCls, "onDraw", Canvas.class);
-            if (mDraw != null) {
-                XposedCompat.hookMethod(mDraw, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        Object earView = param.thisObject;
-                        if (earView == null) {
-                            return;
-                        }
-                        float aodProg = resolveLiveAodProgress(null);
-                        if (cfg.isFcEnabled()) {
-                            Object sp = readField(earView, "scrimPaint");
-                            if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
-                                ((Paint) sp).setAlpha(0);
-                            }
-                        }
-                        int earKey = computeHelperKey(cfg, earView, aodProg);
-                        Integer prev = LAST_EAR_VER.get(earView);
-                        if (prev != null && prev == earKey) {
-                            return;
-                        }
-                        if (earView instanceof View) {
-                            ACTIVE_CAPSULE_EARS.put((View) earView, Boolean.TRUE);
-                        }
-                        LAST_EAR_VER.put(earView, earKey);
-                        syncHelperBlurProxies(cl, earView, cfg, aodProg, true);
-                    }
-                });
-                ok = true;
-            }
-            return ok;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud CapsuleEarView hook err: " + t);
-            return false;
-        }
-    }
-
-    private static void enableGradMaskPaintDither(View v) {
-        if (v == null) {
-            return;
-        }
-        try {
-            if (!sGradMaskPaintProbed) {
-                for (Field f : v.getClass().getDeclaredFields()) {
-                    if (Paint.class.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        sGradMaskPaintField = f;
-                        break;
-                    }
-                }
-                sGradMaskPaintProbed = true;
-            }
-            Field pf = sGradMaskPaintField;
-            if (pf != null) {
-                Object pObj = pf.get(v);
-                if (pObj instanceof Paint) {
-                    ((Paint) pObj).setDither(true);
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static boolean hookKeyguardCapsuleMask(ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> maskCls = loadClass(C_GRAD_MASK_VIEW, cl);
-            Method m = XposedCompat.findDeclaredMethod(maskCls, "onDraw", Canvas.class);
-            if (m == null) {
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    Object state = readField(param.thisObject, "clockSizeState");
-                    // clockSizeState == 1 is specifically the 180dp dark capsule backdrop on keyguard
-                    if (!(state instanceof Integer) || ((Integer) state) != 1) {
-                        return;
-                    }
-                    if (param.thisObject instanceof View) {
-                        ACTIVE_GRAD_MASK_VIEWS.put((View) param.thisObject, Boolean.TRUE);
-                    }
-                    if (!cfg.isFcEnabled()) {
-                        if (param.thisObject instanceof View) {
-                            View v = (View) param.thisObject;
-                            if (Math.abs(v.getAlpha() - 1.0f) > 0.002f) {
-                                v.setAlpha(1.0f);
-                            }
-                            if (LAST_GRAD_MASK_HASH.remove(v) != null) {
-                                writeIntField(v, "bottomMaskColor", 0xFF000000);
-                                writeField(v, "linearGradient", null);
-                                callNoArg(v, "createMaskShader");
-                            }
-                        }
-                        return;
-                    }
-                    boolean isMedia = sLastLockCustomRowIsMedia;
-                    int mediaMaskRgb = resolveMediaMaskRgb(cfg, isMedia, true);
-                    boolean hasMediaTint = mediaMaskRgb != 0;
-                    boolean hasCustomMask = !hasMediaTint && isCustomMaskAllowed(cfg, isMedia, true);
-                    int customMaskArgb = hasCustomMask ? cfg.getFcCustomMaskColor() : 0;
-                    float baseMaskScale = resolveMaskAlphaScale(cfg, isMedia, hasMediaTint)
-                            * (hasCustomMask ? ConfigStore.colorAlphaScale(customMaskArgb) : 1.0f);
-                    float aodProg = easeAodProgress(resolveLiveAodProgress(null));
-                    float maskScale = baseMaskScale * (1.0f - aodProg);
-                    if (cfg.isFcMatchCard() || maskScale <= 0.001f) {
-                        param.setResult(null);
-                        return;
-                    }
-                    if (param.thisObject instanceof View) {
-                        View v = (View) param.thisObject;
-                        float targetAlpha = clamp01(baseMaskScale) * (1.0f - aodProg);
-                        if (Math.abs(v.getAlpha() - targetAlpha) > 0.002f) {
-                            v.setAlpha(targetAlpha);
-                        }
-                        int maskRgb = hasMediaTint ? (mediaMaskRgb & 0x00FFFFFF)
-                                : (hasCustomMask ? (customMaskArgb & 0x00FFFFFF) : 0);
-                        int maskH = readIntField(v, "capsuleMaskHeight", v.getHeight());
-                        if (maskH <= 0) {
-                            maskH = v.getHeight();
-                        }
-                        if (maskH > 0) {
-                            int gStart = cfg.getFcMaskGradStartInt();
-                            int gEnd = cfg.getFcMaskGradEndInt();
-                            int gMid = cfg.getFcMaskGradMidInt();
-                            int gradKey = maskH;
-                            gradKey = gradKey * 31 + ((hasMediaTint ? 1 : 0) | (hasCustomMask ? 2 : 0));
-                            gradKey = gradKey * 31 + maskRgb;
-                            gradKey = gradKey * 31 + gStart;
-                            gradKey = gradKey * 31 + gEnd;
-                            gradKey = gradKey * 31 + gMid;
-                            gradKey = gradKey * 31 + Math.round(Math.min(2.0f, baseMaskScale) * 100f);
-                            Integer prevKey = LAST_GRAD_MASK_HASH.get(v);
-                            if (prevKey == null || prevKey != gradKey) {
-                                enableGradMaskPaintDither(v);
-                                float boostMul = Math.min(2.0f, Math.max(1.0f, baseMaskScale));
-                                int aStart = clampAlpha(Math.round(255f * Math.min(1.0f, boostMul)));
-                                int cStart = (aStart << 24) | maskRgb;
-                                ConfigStore.SmoothGradientSpec spec = ConfigStore.buildSmoothGradient(
-                                        maskRgb, aStart, gStart, gEnd, gMid);
-                                writeIntField(v, "bottomMaskColor", cStart);
-                                writeField(v, "linearGradient", new LinearGradient(
-                                        0f, (float) maskH, 0f, 0f,
-                                        spec.colors,
-                                        spec.positions,
-                                        Shader.TileMode.CLAMP));
-                                LAST_GRAD_MASK_HASH.put(v, gradKey);
-                            }
-                        }
-                    }
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud GradientColorImageView hook err: " + t);
             return false;
         }
     }
@@ -1671,9 +1355,7 @@ public final class FluidCloudHook {
                     @Override
                     public Object intercept(XposedInterface.Chain chain) throws Throwable {
                         Object ct = chain.getArg(0);
-                        boolean isCapsule = ct != null && (ct == sCardTypeCapsule || ct == sCardTypeCapsuleEar);
-                        boolean isCustom = ct != null && ct == sCardTypeCustom;
-                        if (!isCapsule && !isCustom) {
+                        if (ct == null || ct != sCardTypeCustom) {
                             return chain.proceed();
                         }
                         Object mgr = chain.getThisObject();
@@ -1685,25 +1367,21 @@ public final class FluidCloudHook {
                         }
                         Object mode = chain.getArg(1);
                         Object stock = chain.proceed();
-                        if (isCustom && !isCustomOnLockscreen(mgr, mode)) {
+                        if (!isCustomOnLockscreen(mgr, mode)) {
                             return stock;
                         }
-                        if (stock != null) {
-                            if (isCapsule && sStockCapsuleMix == null) {
-                                sStockCapsuleMix = stock;
-                            } else if (isCustom && sStockCustomMix == null) {
-                                sStockCustomMix = stock;
-                            }
+                        if (stock != null && sStockCustomMix == null) {
+                            sStockCustomMix = stock;
                         }
                         float aodProg = resolveLiveAodProgress(null);
                         if (!cfg.isFcEnabled() || (!cfg.isFcLockTintOrMaskModified() && aodProg <= 0.001f)) {
                             return stock;
                         }
                         try {
-                            boolean suppressCustom = isCapsule
-                                    ? shouldSuppressCapsuleCustomColor(null, cfg)
-                                    : (DynamicIslandHook.hasActiveLockMediaFluidCloud()
-                                            && (cfg.isFcNonMediaMaskEnabled() || sLastLockCustomRowIsMedia));
+                            boolean isMediaOwner = isMediaCustomRowFromOwnerView(TL_BLUR_PARAM_OWNER_VIEW.get());
+                            boolean suppressCustom = isMediaOwner
+                                    || (DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                                            && cfg.isFcNonMediaMaskEnabled());
                             Object replaced = buildMix(cl, cfg, stock, aodProg, !suppressCustom);
                             if (replaced != null) {
                                 return replaced;
@@ -1736,8 +1414,10 @@ public final class FluidCloudHook {
                             return;
                         }
                         try {
-                            boolean suppressCustom = DynamicIslandHook.hasActiveLockMediaFluidCloud()
-                                    && (cfg.isFcNonMediaMaskEnabled() || sLastLockCustomRowIsMedia);
+                            boolean isMediaOwner = isMediaCustomRowFromOwnerView(TL_BLUR_PARAM_OWNER_VIEW.get());
+                            boolean suppressCustom = isMediaOwner
+                                    || (DynamicIslandHook.hasActiveLockMediaFluidCloud()
+                                            && cfg.isFcNonMediaMaskEnabled());
                             Object replaced = buildMix(cl, cfg, stock, aodProg, !suppressCustom);
                             if (replaced != null) {
                                 param.setResult(replaced);
@@ -1837,6 +1517,14 @@ public final class FluidCloudHook {
             if (blurCfg != null) {
                 Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
                 Object isp = callNoArg(blurCfg, "getInnerShadowParams");
+                if (stroke != null) {
+                    MEDIA_STROKE_SET.remove(stroke);
+                    NORMAL_STROKE_SET.put(stroke, Boolean.TRUE);
+                }
+                if (isp != null) {
+                    MEDIA_SHADOW_SET.remove(isp);
+                    NORMAL_SHADOW_SET.put(isp, Boolean.TRUE);
+                }
                 tinted |= applyLockNotifHighlightColor(stroke, isp, wantTint, mediaArgb);
                 Object pbd = resolvePlatformBlurDrawable(cl, proxy);
                 Object bd = pbd != null ? callNoArg(pbd, "getBlurDrawable") : null;
@@ -1870,6 +1558,14 @@ public final class FluidCloudHook {
                     }
                     Object sStroke = callNoArg(stackCfg, "getGradientStrokeLineParam");
                     Object sIsp = callNoArg(stackCfg, "getInnerShadowParams");
+                    if (sStroke != null) {
+                        MEDIA_STROKE_SET.remove(sStroke);
+                        NORMAL_STROKE_SET.put(sStroke, Boolean.TRUE);
+                    }
+                    if (sIsp != null) {
+                        MEDIA_SHADOW_SET.remove(sIsp);
+                        NORMAL_SHADOW_SET.put(sIsp, Boolean.TRUE);
+                    }
                     tinted |= applyLockNotifHighlightColor(sStroke, sIsp, wantTint, mediaArgb);
                     Object kObj = entry.getKey();
                     if (kObj instanceof Integer) {
@@ -1923,13 +1619,18 @@ public final class FluidCloudHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Object stroke = param.getResult();
-                            if (stroke == null || !cfg.isLockNotifGlowFollowMedia()) {
+                            if (stroke == null || param.args.length < 2
+                                    || !"NOTIFICATION".equals(String.valueOf(param.args[0]))) {
                                 return;
                             }
-                            if (param.args.length < 2 || !"NOTIFICATION".equals(String.valueOf(param.args[0]))) {
+                            if (!isAllowedNormalNotifHighlightOwner(TL_BLUR_PARAM_OWNER_VIEW.get())) {
                                 return;
                             }
-                            if (!isCustomOnLockscreen(null, param.args[1])) {
+                            if (Boolean.TRUE.equals(MEDIA_STROKE_SET.get(stroke))) {
+                                return;
+                            }
+                            NORMAL_STROKE_SET.put(stroke, Boolean.TRUE);
+                            if (!cfg.isLockNotifGlowFollowMedia() || !isCustomOnLockscreen(null, param.args[1])) {
                                 return;
                             }
                             int mediaArgb = resolveLockNotifMediaColorArgb(true);
@@ -1946,13 +1647,18 @@ public final class FluidCloudHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Object isp = param.getResult();
-                            if (isp == null || !cfg.isLockNotifGlowFollowMedia()) {
+                            if (isp == null || param.args.length < 2
+                                    || !"NOTIFICATION".equals(String.valueOf(param.args[0]))) {
                                 return;
                             }
-                            if (param.args.length < 2 || !"NOTIFICATION".equals(String.valueOf(param.args[0]))) {
+                            if (!isAllowedNormalNotifHighlightOwner(TL_BLUR_PARAM_OWNER_VIEW.get())) {
                                 return;
                             }
-                            if (!isCustomOnLockscreen(null, param.args[1])) {
+                            if (Boolean.TRUE.equals(MEDIA_SHADOW_SET.get(isp))) {
+                                return;
+                            }
+                            NORMAL_SHADOW_SET.put(isp, Boolean.TRUE);
+                            if (!cfg.isLockNotifGlowFollowMedia() || !isCustomOnLockscreen(null, param.args[1])) {
                                 return;
                             }
                             int mediaArgb = resolveLockNotifMediaColorArgb(true);
@@ -1971,10 +1677,17 @@ public final class FluidCloudHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         Object stroke = param.getResult();
-                        if (stroke == null || !cfg.isLockNotifGlowFollowMedia() || param.args.length < 2) {
+                        if (stroke == null || param.args.length < 2) {
                             return;
                         }
-                        if (!isCustomOnLockscreen(null, param.args[1])) {
+                        if (!isAllowedNormalNotifHighlightOwner(TL_BLUR_PARAM_OWNER_VIEW.get())) {
+                            return;
+                        }
+                        if (Boolean.TRUE.equals(MEDIA_STROKE_SET.get(stroke))) {
+                            return;
+                        }
+                        NORMAL_STROKE_SET.put(stroke, Boolean.TRUE);
+                        if (!cfg.isLockNotifGlowFollowMedia() || !isCustomOnLockscreen(null, param.args[1])) {
                             return;
                         }
                         int mediaArgb = resolveLockNotifMediaColorArgb(true);
@@ -1992,10 +1705,17 @@ public final class FluidCloudHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         Object isp = param.getResult();
-                        if (isp == null || !cfg.isLockNotifGlowFollowMedia() || param.args.length < 2) {
+                        if (isp == null || param.args.length < 2) {
                             return;
                         }
-                        if (!isCustomOnLockscreen(null, param.args[1])) {
+                        if (!isAllowedNormalNotifHighlightOwner(TL_BLUR_PARAM_OWNER_VIEW.get())) {
+                            return;
+                        }
+                        if (Boolean.TRUE.equals(MEDIA_SHADOW_SET.get(isp))) {
+                            return;
+                        }
+                        NORMAL_SHADOW_SET.put(isp, Boolean.TRUE);
+                        if (!cfg.isLockNotifGlowFollowMedia() || !isCustomOnLockscreen(null, param.args[1])) {
                             return;
                         }
                         int mediaArgb = resolveLockNotifMediaColorArgb(true);
@@ -2043,6 +1763,10 @@ public final class FluidCloudHook {
                     Object blurMode = param.args[3];
                     boolean isMediaStroke = stroke != null && Boolean.TRUE.equals(MEDIA_STROKE_SET.get(stroke));
                     boolean isMediaShadow = isp != null && Boolean.TRUE.equals(MEDIA_SHADOW_SET.get(isp));
+                    boolean isNormalStroke = !isMediaStroke && stroke != null
+                            && Boolean.TRUE.equals(NORMAL_STROKE_SET.get(stroke));
+                    boolean isNormalShadow = !isMediaShadow && isp != null
+                            && Boolean.TRUE.equals(NORMAL_SHADOW_SET.get(isp));
                     if (cfg.isFcEnabled()) {
                         if (isMediaStroke) {
                             applyBottomHighlightToStroke(stroke, cfg, factor);
@@ -2052,12 +1776,12 @@ public final class FluidCloudHook {
                         }
                     }
                     if (cfg.isLockNotifGlowFollowMedia()
-                            && (!isMediaStroke || !isMediaShadow)
+                            && (isNormalStroke || isNormalShadow)
                             && isCustomOnLockscreen(null, blurMode)) {
                         int mediaArgb = resolveLockNotifMediaColorArgb(true);
                         applyLockNotifHighlightColor(
-                                isMediaStroke ? null : stroke,
-                                isMediaShadow ? null : isp,
+                                isNormalStroke ? stroke : null,
+                                isNormalShadow ? isp : null,
                                 mediaArgb != 0,
                                 mediaArgb);
                     }
@@ -2120,7 +1844,6 @@ public final class FluidCloudHook {
                     XposedCompat.hookDirect(mUpdate, new XposedInterface.Hooker() {
                         @Override
                         public Object intercept(XposedInterface.Chain chain) throws Throwable {
-                            Object res = chain.proceed();
                             final Object mgr = chain.getThisObject();
                             if (mgr != null) {
                                 WeakReference<Object> ref = sViewBlurManagerRef;
@@ -2129,23 +1852,41 @@ public final class FluidCloudHook {
                                 }
                             }
                             final Object proxy = chain.getArg(0);
-                            if (proxy == null) {
+                            View owner = null;
+                            if (proxy != null) {
+                                Method getViewM = sProxyGetViewM;
+                                if (getViewM == null || !getViewM.getDeclaringClass().isInstance(proxy)) {
+                                    getViewM = findSingleTypedMethodCached(
+                                            NO_ARG_METHOD_CACHE, proxy.getClass(), "getView", null);
+                                    sProxyGetViewM = getViewM;
+                                }
+                                Object viewObj = getViewM != null ? getViewM.invoke(proxy) : null;
+                                if (viewObj instanceof View) {
+                                    owner = (View) viewObj;
+                                }
+                            }
+                            View prevOwner = TL_BLUR_PARAM_OWNER_VIEW.get();
+                            if (owner != null) {
+                                TL_BLUR_PARAM_OWNER_VIEW.set(owner);
+                            }
+                            Object res;
+                            try {
+                                res = chain.proceed();
+                            } finally {
+                                if (prevOwner != null) {
+                                    TL_BLUR_PARAM_OWNER_VIEW.set(prevOwner);
+                                } else {
+                                    TL_BLUR_PARAM_OWNER_VIEW.remove();
+                                }
+                            }
+                            if (proxy == null || owner == null) {
                                 return res;
                             }
-                            Method getViewM = sProxyGetViewM;
-                            if (getViewM == null || !getViewM.getDeclaringClass().isInstance(proxy)) {
-                                getViewM = findSingleTypedMethodCached(
-                                        NO_ARG_METHOD_CACHE, proxy.getClass(), "getView", null);
-                                sProxyGetViewM = getViewM;
-                            }
-                            Object viewObj = getViewM != null ? getViewM.invoke(proxy) : null;
-                            if (!(viewObj instanceof View)) {
-                                return res;
-                            }
-                            final View v = (View) viewObj;
+                            final View v = owner;
                             boolean isMedia = mediaCls != null ? mediaCls.isInstance(v)
                                     : C_MEDIA_CAROUSEL.equals(v.getClass().getName());
-                            if (!isMedia) {
+                            boolean isOverlay = !isMedia && C_OVERLAY_BG_VIEW.equals(v.getClass().getName());
+                            if (!isMedia && !isOverlay) {
                                 ViewParent vp = v.getParent();
                                 if (!(vp instanceof View)) {
                                     return res;
@@ -2251,6 +1992,14 @@ public final class FluidCloudHook {
         }
         if (C_MEDIA_CAROUSEL.equals(v.getClass().getName())) {
             syncMediaCarouselProxy(cl, mgr, v, proxy, cfg, true);
+        } else if (C_OVERLAY_BG_VIEW.equals(v.getClass().getName())) {
+            View author = resolveOverlayAuthorRow(v);
+            boolean normalAuthor = author != null && C_EXPANDABLE_NOTIF_ROW.equals(author.getClass().getName());
+            if (!normalAuthor) {
+                if (scrubProxyHighlightToWhite(cl, proxy)) {
+                    callNoArg(proxy, "applyBlurConfig");
+                }
+            }
         } else if (v.getParent() instanceof View) {
             View parent = (View) v.getParent();
             String parentName = parent.getClass().getName();
@@ -2291,6 +2040,27 @@ public final class FluidCloudHook {
         }
     }
 
+    private static boolean ensureWhiteStrokeShadow(Object stroke, Object isp) {
+        boolean changed = false;
+        if (stroke != null) {
+            Object c = readField(stroke, "strokeLineColor");
+            if (c instanceof Color && ((Color) c).toArgb() != 0xFFFFFFFF) {
+                callSetter(stroke, "setStrokeLineColor", "android.graphics.Color", null,
+                        Color.valueOf(0xFFFFFFFF));
+                changed = true;
+            }
+        }
+        if (isp != null) {
+            Object c = readField(isp, "shadowColor");
+            if (c instanceof Color && ((Color) c).toArgb() != 0xFFFFFFFF) {
+                callSetter(isp, "setShadowColor", "android.graphics.Color", null,
+                        Color.valueOf(0xFFFFFFFF));
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     private static void syncMediaCarouselProxy(ClassLoader cl, Object viewBlurManager, View mediaView,
                                                Object proxy, ConfigStore.HookConfig cfg, boolean applyNow) {
         if (proxy == null || mediaView == null) {
@@ -2304,6 +2074,15 @@ public final class FluidCloudHook {
             }
             Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
             Object isp = callNoArg(blurCfg, "getInnerShadowParams");
+            if (stroke != null) {
+                NORMAL_STROKE_SET.remove(stroke);
+                MEDIA_STROKE_SET.put(stroke, Boolean.TRUE);
+            }
+            if (isp != null) {
+                NORMAL_SHADOW_SET.remove(isp);
+                MEDIA_SHADOW_SET.put(isp, Boolean.TRUE);
+            }
+            boolean scrubbed = ensureWhiteStrokeShadow(stroke, isp);
             boolean shade = !isCustomOnLockscreen(viewBlurManager, mode);
             int w = mediaView.getWidth();
             int h = mediaView.getHeight();
@@ -2311,28 +2090,26 @@ public final class FluidCloudHook {
             LAST_MEDIA_STATE.put(mediaView, new int[]{cfg.getFcVersion(), w, h, shade ? 1 : 0});
 
             if (shade || !cfg.isFcEnabled() || cfg.getFcBottomGlowInt() <= 0) {
-                boolean restored = false;
+                boolean restored = scrubbed;
                 if (stroke != null) {
-                    MEDIA_STROKE_SET.remove(stroke);
                     restored |= restoreStrokeParams(stroke);
                 }
                 if (isp != null) {
-                    MEDIA_SHADOW_SET.remove(isp);
                     restored |= restoreShadowParams(isp);
                 }
+                restored |= scrubMediaMultiHelper(cl, proxy, true, true);
                 if (restored && applyNow) {
                     callNoArg(proxy, "applyBlurConfig");
                 }
                 return;
             }
 
+            scrubMediaMultiHelper(cl, proxy, false, true);
             if (stroke != null) {
                 ensureOrigStrokeSaved(stroke, 1.0f);
-                MEDIA_STROKE_SET.put(stroke, Boolean.TRUE);
             }
             if (isp != null) {
                 ensureOrigShadowSaved(isp, 1.0f);
-                MEDIA_SHADOW_SET.put(isp, Boolean.TRUE);
             }
             applyStockSizeMapping(cl, mediaView.getContext(), stroke, isp, w, h, mode);
             if (stroke != null) {
@@ -2421,9 +2198,6 @@ public final class FluidCloudHook {
                                 if (prev == null || prev != isMedia) {
                                     DynamicIslandHook.bumpMediaColorVersion();
                                 }
-                                if (isCustomOnLockscreen(null, null)) {
-                                    sLastLockCustomRowIsMedia = isMedia;
-                                }
                             }
                         }
 
@@ -2457,6 +2231,9 @@ public final class FluidCloudHook {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             try {
+                                if (param.args.length > 0 && shouldStripCustomRowMask(cfg, null)) {
+                                    zeroMetaColorSafely(param.args[0]);
+                                }
                                 if (param.args.length > 2 && param.args[2] instanceof Float) {
                                     Object prev = param.getObjectExtra("prevImmFade");
                                     if (prev instanceof Float) {
@@ -2504,6 +2281,7 @@ public final class FluidCloudHook {
                         View rowView = (View) param.thisObject;
                         ACTIVE_CUSTOM_ROWS.put(rowView, Boolean.TRUE);
                         LAST_CUSTOM_LOCK_STATE.remove(rowView);
+                        LAST_CUSTOM_MIX_VER.remove(rowView);
                         LAST_CUSTOM_MASK_VER.remove(rowView);
                         LAST_DRIFT_CHECK_MS.remove(rowView);
                         if (param.args.length > 0 && param.args[0] != null) {
@@ -2574,7 +2352,7 @@ public final class FluidCloudHook {
                         } else if (cfg.isFcEnabled()) {
                             Object bgObj = readField(rowView, "mBackgroundNormal");
                             Object extObj = bgObj != null ? callNoArg(bgObj, "getExt") : null;
-                            tagCustomRowMetaIsMedia(cl, rowView, bgObj, null, true);
+                            tagCustomRowMetaIsMedia(cl, rowView, bgObj, null);
                             float aodProg = resolveLiveAodProgress(extObj);
                             syncCustomRowLockMix(cl, rowView, cfg, aodProg, false);
                             DynamicIslandHook.setCardBackgroundViewsAlphaInTree(
@@ -2598,13 +2376,15 @@ public final class FluidCloudHook {
                             return;
                         }
                         View rowView = (View) param.thisObject;
+                        param.setObjectExtra("prevOwner", TL_BLUR_PARAM_OWNER_VIEW.get());
+                        TL_BLUR_PARAM_OWNER_VIEW.set(rowView);
                         float immProg = (param.args.length > 0 && param.args[0] instanceof Float)
                                 ? (Float) param.args[0] : 0.0f;
                         LAST_ROW_IMMERSIVE_PROG.put(rowView, immProg);
                         TL_IMMERSIVE_MASK_FADE.set(1.0f - clamp01(immProg));
                         Object mgr = readField(rowView, "viewBlurManager");
                         boolean onLock = isCustomOnLockscreen(mgr, null);
-                        tagCustomRowMetaIsMedia(cl, rowView, null, null, onLock);
+                        tagCustomRowMetaIsMedia(cl, rowView, null, null);
                         if (onLock && cfg.isFcEnabled()) {
                             syncRowImmersiveEndColors(rowView, cfg, true, resolveLiveAodProgress(null));
                         } else {
@@ -2614,6 +2394,12 @@ public final class FluidCloudHook {
 
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
+                        Object prevOwner = param.getObjectExtra("prevOwner");
+                        if (prevOwner instanceof View) {
+                            TL_BLUR_PARAM_OWNER_VIEW.set((View) prevOwner);
+                        } else {
+                            TL_BLUR_PARAM_OWNER_VIEW.remove();
+                        }
                         TL_IMMERSIVE_MASK_FADE.remove();
                         if (!(param.thisObject instanceof View)) {
                             return;
@@ -2720,6 +2506,9 @@ public final class FluidCloudHook {
                         long lockStateKey = computeCustomLockStateKey(rowView, cfg, onLock, rawAodProg);
                         Long prevState = LAST_CUSTOM_LOCK_STATE.get(rowView);
                         float immProg = onLock ? readRowImmersiveProgress(rowView) : 0.0f;
+                        if (onLock && immProg > 0.01f && isRowStuckImmersive(rowView, cl)) {
+                            scheduleStuckImmersiveReconcile(rowView, cl, cfg);
+                        }
                         boolean inMidImm = onLock && immProg > 0.01f && immProg < 0.99f;
                         boolean inImmFade = onLock && cfg.isFcEnabled() && immProg > 0.01f;
                         boolean mixDrifted = false;
@@ -2950,20 +2739,7 @@ public final class FluidCloudHook {
         }
     }
 
-    private static View findEnclosingCapsuleItem(View start) {
-        View cur = start;
-        for (int depth = 0; depth < 24 && cur != null; depth++) {
-            if (C_CAPSULE_ITEM.equals(cur.getClass().getName())) {
-                return cur;
-            }
-            Object p = cur.getParent();
-            cur = p instanceof View ? (View) p : null;
-        }
-        return null;
-    }
-
-    private static void tagCustomRowMetaIsMedia(ClassLoader cl, View rowView, Object bgNormal,
-                                                Object proxy, boolean onLock) {
+    private static void tagCustomRowMetaIsMedia(ClassLoader cl, View rowView, Object bgNormal, Object proxy) {
         if (rowView == null) {
             return;
         }
@@ -2971,9 +2747,6 @@ public final class FluidCloudHook {
         if (meta != null) {
             boolean isMedia = isMediaCustomRow(rowView);
             META_DRAWABLE_IS_MEDIA.put(meta, isMedia);
-            if (onLock) {
-                sLastLockCustomRowIsMedia = isMedia;
-            }
         }
     }
 
@@ -3068,7 +2841,14 @@ public final class FluidCloudHook {
             return true;
         }
         Object pbd = resolvePlatformBlurDrawable(cl, proxy);
+        Object bd = pbd != null ? callNoArg(pbd, "getBlurDrawable") : null;
+        if (bd != null && !Boolean.TRUE.equals(callNoArg(bd, "getEnableShader"))) {
+            return true;
+        }
         Object curPbdMix = pbd != null ? callNoArg(pbd, "getCurrentBlurMixConfig") : null;
+        if (pbd != null && curPbdMix == null) {
+            return true;
+        }
         return curPbdMix != null && !isMixMatchingExpected(curPbdMix, exp[0], exp[1]);
     }
 
@@ -3122,6 +2902,9 @@ public final class FluidCloudHook {
         long lockStateKey = computeCustomLockStateKey(parentView, cfg, onLock, rawAodProg);
         Long prevState = LAST_CUSTOM_LOCK_STATE.get(parentView);
         float immProg = onLock ? readRowImmersiveProgress(parentView) : 0.0f;
+        if (onLock && immProg > 0.01f && isRowStuckImmersive(parentView, cl)) {
+            scheduleStuckImmersiveReconcile(parentView, cl, cfg);
+        }
         boolean inMidImm = onLock && immProg > 0.01f && immProg < 0.99f;
         boolean inImmFade = onLock && cfg.isFcEnabled() && immProg > 0.01f;
         if (prevState != null && prevState == lockStateKey) {
@@ -3278,7 +3061,7 @@ public final class FluidCloudHook {
         cache.paint.setAlpha(effAlpha);
         int sc = canvas.save();
         try {
-            canvas.translate(bounds.left + (int) tx, bounds.top);
+            canvas.translate(bounds.left, bounds.top);
             if (useG2 && cache.smoothPath != null && !cache.smoothPath.isEmpty()) {
                 canvas.drawPath(cache.smoothPath, cache.paint);
             } else {
@@ -3298,17 +3081,22 @@ public final class FluidCloudHook {
             return;
         }
         if (!CUSTOM_MASK_BY_META.isEmpty()) {
+            boolean stripMask = shouldStripCustomRowMask(cfg, mgr)
+                    || (isCustomOnLockscreen(mgr, null) && readRowImmersiveProgress(rowView) >= 0.99f);
             Object metaDr = CUSTOM_MASK_BY_META.containsKey(blurDr)
                     ? blurDr : LAST_CUSTOM_META_REF.get(rowView);
-            CustomRowMaskSpec spec = metaDr != null ? CUSTOM_MASK_BY_META.get(metaDr) : null;
-            if (spec == null) {
-                Object resolved = resolveCustomRowMetaDrawable(cl, rowView, bgView, proxy);
-                if (resolved != null) {
-                    spec = CUSTOM_MASK_BY_META.get(resolved);
-                }
+            if (metaDr == null) {
+                metaDr = resolveCustomRowMetaDrawable(cl, rowView, bgView, proxy);
             }
-            if (spec != null) {
-                drawCustomRowSmoothMask(rowView, bgView, proxy, blurDr, canvas, spec);
+            if (stripMask) {
+                if (metaDr != null) {
+                    CUSTOM_MASK_BY_META.remove(metaDr);
+                }
+            } else {
+                CustomRowMaskSpec spec = metaDr != null ? CUSTOM_MASK_BY_META.get(metaDr) : null;
+                if (spec != null) {
+                    drawCustomRowSmoothMask(rowView, bgView, proxy, blurDr, canvas, spec);
+                }
             }
         }
         if (Build.VERSION.SDK_INT < 33 || !isCustomOnLockscreen(mgr, null)) {
@@ -3321,7 +3109,11 @@ public final class FluidCloudHook {
         boolean isLargeMedia = DynamicIslandHook.isLargeMediaCardHeight(
                 isMediaCustomRow(rowView), h, resolveDisplayDensity());
         int glowPct = isLargeMedia ? cfg.getFcBottomGlowInt() : cfg.getFcSingleGlowInt();
-        if (glowPct <= 0) {
+        boolean hasCustomGlow = cfg.isFcEnabled()
+                && cfg.isFcCustomGlowEnabled()
+                && !shouldSuppressLockCustomColor(rowView, cfg)
+                && ((cfg.getFcCustomGlowColor() >>> 24) & 0xFF) > 0;
+        if (glowPct <= 0 && !hasCustomGlow) {
             return;
         }
         int chromaPct = isLargeMedia ? cfg.getFcBottomGlowChromaInt() : cfg.getFcSingleGlowChromaInt();
@@ -3438,6 +3230,40 @@ public final class FluidCloudHook {
                     }
                 });
             }
+
+            Class<?> blurModeCls = loadClass(C_BLUR_MODE, cl);
+            Method mNotifyMode = blurModeCls != null
+                    ? findMethod(extCls, "notifyBlurParamChanged", blurModeCls) : null;
+            if (mNotifyMode != null) {
+                XposedCompat.hookMethod(mNotifyMode, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Object bgObj = callNoArg(param.thisObject, "getBgView");
+                        ViewParent parent = (bgObj instanceof View) ? ((View) bgObj).getParent() : null;
+                        if (!(parent instanceof View)) {
+                            return;
+                        }
+                        View pView = (View) parent;
+                        String pCls = pView.getClass().getName();
+                        if (C_CUSTOM_ROW_VIEW.equals(pCls)) {
+                            LAST_CUSTOM_LOCK_STATE.remove(pView);
+                            LAST_CUSTOM_MIX_VER.remove(pView);
+                            LAST_CUSTOM_MASK_VER.remove(pView);
+                            if (isCustomOnLockscreen(readField(pView, "viewBlurManager"), null)
+                                    && isRowStuckImmersive(pView, cl)) {
+                                scheduleStuckImmersiveReconcile(pView, cl, cfg);
+                            }
+                        } else if (C_EXPANDABLE_NOTIF_ROW.equals(pCls)) {
+                            boolean onLock = isCustomOnLockscreen(null, param.args.length > 0 ? param.args[0] : null);
+                            if (onLock && cfg.isLockNotifGlowFollowMedia()) {
+                                syncNormalRowHighlightColor(cl, pView, param.thisObject, cfg, true, false);
+                            } else if (!onLock && sHasAnyNormalGlowTinted) {
+                                syncNormalRowHighlightColor(cl, pView, param.thisObject, cfg, false, true);
+                            }
+                        }
+                    }
+                });
+            }
             return true;
         } catch (Throwable t) {
             cfg.note("FluidCloud CustomRow bg draw hook err: " + t);
@@ -3495,6 +3321,10 @@ public final class FluidCloudHook {
                 CustomRowMaskSpec prev = CUSTOM_MASK_BY_META.remove(metaDrawable);
                 specChanged = (prev != null);
                 mappedRow = META_DRAWABLE_TO_ROW.get(metaDrawable);
+                if (mappedRow != null) {
+                    LAST_CUSTOM_MASK_VER.remove(mappedRow);
+                    LAST_CUSTOM_LOCK_STATE.remove(mappedRow);
+                }
             } else {
                 View rowView = META_DRAWABLE_TO_ROW.get(metaDrawable);
                 mappedRow = rowView;
@@ -3666,47 +3496,6 @@ public final class FluidCloudHook {
             return ok;
         } catch (Throwable t) {
             cfg.note("FluidCloud MetaBall hook err: " + t);
-            return false;
-        }
-    }
-
-    private static boolean hookLiveCapsuleRefresh(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
-        try {
-            Class<?> helperCls = loadClass(C_HELPER, cl);
-            Method m = findMethod(helperCls, "drawCapsuleBg", View.class, Canvas.class);
-            if (m == null) {
-                return false;
-            }
-            XposedCompat.hookMethod(m, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) {
-                    Object helper = param.thisObject;
-                    if (helper == null) {
-                        return;
-                    }
-                    float aodProg = resolveLiveAodProgress(helper);
-                    if (cfg.isFcEnabled()) {
-                        Object sp = readField(helper, "scrimPaint");
-                        if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
-                            ((Paint) sp).setAlpha(0);
-                        }
-                    }
-                    int helperKey = computeHelperKey(cfg, helper, aodProg);
-                    Integer prev = LAST_HELPER_VER.get(helper);
-                    if (prev != null && prev == helperKey) {
-                        return;
-                    }
-                    ACTIVE_CAPSULE_HELPERS.put(helper, Boolean.TRUE);
-                    LAST_HELPER_VER.put(helper, helperKey);
-                    if (cfg.isFcEnabled()) {
-                        zeroMetaColorSafely(callNoArg(helper, "getBlurDrawable"));
-                    }
-                    syncHelperBlurProxies(cl, helper, cfg, aodProg, true);
-                }
-            });
-            return true;
-        } catch (Throwable t) {
-            cfg.note("FluidCloud live refresh hook err: " + t);
             return false;
         }
     }
@@ -3986,31 +3775,6 @@ public final class FluidCloudHook {
         }
     }
 
-    private static void syncProxyBlurConfig(ClassLoader cl, Object proxy, ConfigStore.HookConfig cfg,
-                                            float aodProg, boolean fastTransition) {
-        if (proxy == null) {
-            return;
-        }
-        Object blurCfg = callNoArg(proxy, "getBlurConfig");
-        if (blurCfg != null) {
-            CAPSULE_CFG.put(blurCfg, Boolean.TRUE);
-            syncBlurConfigLive(cl, blurCfg, proxy, cfg, true, aodProg, fastTransition);
-        }
-    }
-
-    private static void syncHelperBlurProxies(ClassLoader cl, Object helper, ConfigStore.HookConfig cfg,
-                                              float aodProg, boolean fastTransition) {
-        if (helper == null) {
-            return;
-        }
-        Object proxy = readField(helper, "viewBlurProxy");
-        syncProxyBlurConfig(cl, proxy, cfg, aodProg, fastTransition);
-        Object smoothProxy = readField(helper, "smoothSharedViewBlurProxy");
-        if (smoothProxy != null && smoothProxy != proxy) {
-            syncProxyBlurConfig(cl, smoothProxy, cfg, aodProg, fastTransition);
-        }
-    }
-
     private static boolean applyNormalRowEffectFast(ClassLoader cl, View nr, Object extObj, float rawAodProg) {
         try {
             Object proxy = extObj != null ? callNoArg(extObj, "getViewBlurProxy") : null;
@@ -4147,6 +3911,10 @@ public final class FluidCloudHook {
                 DynamicIslandHook.invalidateActiveLockLights();
             }
 
+            boolean activeCapsuleAod = cfg.isFcEnabled()
+                    && (rawAodProg > 0.001f || sAodVisualAnimatorRunning || sVisualAodControlled);
+            int capsuleAodKey = (endpoint ? 512 : 0) + Math.round(rawAodProg * 255f);
+
             ArrayList<Object> helpers = new ArrayList<>();
             synchronized (ACTIVE_CAPSULE_HELPERS) {
                 helpers.addAll(ACTIVE_CAPSULE_HELPERS.keySet());
@@ -4164,34 +3932,22 @@ public final class FluidCloudHook {
                 }
                 View capsuleItem = findEnclosingCapsuleItem((View) vObj);
                 View capsuleRoot = capsuleItem != null ? capsuleItem : (View) vObj;
-                if (!cfg.isFcEnabled()) {
-                    if (LAST_HELPER_VER.remove(helper) != null) {
-                        syncProxyBlurConfig(cl, proxy, cfg, 0.0f, true);
-                        if (smoothProxy != null && smoothProxy != proxy) {
-                            syncProxyBlurConfig(cl, smoothProxy, cfg, 0.0f, true);
-                        }
+                if (!activeCapsuleAod) {
+                    if (LAST_CAPSULE_AOD_KEY.remove(helper) != null) {
+                        applyCapsuleHolderAodLightOnly(cl, helper, 0.0f, true);
                         DynamicIslandHook.setCardBackgroundViewsAlphaInTree(capsuleRoot, 1.0f);
                         DynamicIslandHook.invalidateMultiLightViewsInTree(capsuleRoot);
                         ((View) vObj).invalidate();
                     }
                     continue;
                 }
-                Object sp = readField(helper, "scrimPaint");
-                if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
-                    ((Paint) sp).setAlpha(0);
-                }
-                int helperKey = computeHelperKey(cfg, helper, rawAodProg);
-                Integer prevH = LAST_HELPER_VER.get(helper);
-                boolean helperChanged = endpoint || prevH == null || prevH != helperKey;
+                Integer prevH = LAST_CAPSULE_AOD_KEY.get(helper);
+                boolean helperChanged = endpoint || prevH == null || prevH != capsuleAodKey;
                 DynamicIslandHook.setCardBackgroundViewsAlphaInTree(
                         capsuleRoot, clamp01(1.0f - eased));
                 if (helperChanged) {
-                    LAST_HELPER_VER.put(helper, helperKey);
-                    zeroMetaColorSafely(callNoArg(helper, "getBlurDrawable"));
-                    syncProxyBlurConfig(cl, proxy, cfg, rawAodProg, true);
-                    if (smoothProxy != null && smoothProxy != proxy) {
-                        syncProxyBlurConfig(cl, smoothProxy, cfg, rawAodProg, true);
-                    }
+                    LAST_CAPSULE_AOD_KEY.put(helper, capsuleAodKey);
+                    applyCapsuleHolderAodLightOnly(cl, helper, eased, endpoint);
                     ((View) vObj).invalidate();
                 }
                 if (helperChanged || rawAodProg > 0.001f || endpoint) {
@@ -4207,32 +3963,19 @@ public final class FluidCloudHook {
                 if (earView == null || !earView.isAttachedToWindow()) {
                     continue;
                 }
-                Object proxy = readField(earView, "viewBlurProxy");
-                Object smoothProxy = readField(earView, "smoothSharedViewBlurProxy");
-                if (!cfg.isFcEnabled()) {
-                    if (LAST_EAR_VER.remove(earView) != null) {
-                        syncProxyBlurConfig(cl, proxy, cfg, 0.0f, true);
-                        if (smoothProxy != null && smoothProxy != proxy) {
-                            syncProxyBlurConfig(cl, smoothProxy, cfg, 0.0f, true);
-                        }
+                if (!activeCapsuleAod) {
+                    if (LAST_CAPSULE_AOD_KEY.remove(earView) != null) {
+                        applyCapsuleHolderAodLightOnly(cl, earView, 0.0f, true);
                         earView.invalidate();
                     }
                     continue;
                 }
-                Object sp = readField(earView, "scrimPaint");
-                if (sp instanceof Paint && ((Paint) sp).getAlpha() != 0) {
-                    ((Paint) sp).setAlpha(0);
-                }
-                int earKey = computeHelperKey(cfg, earView, rawAodProg);
-                Integer prevE = LAST_EAR_VER.get(earView);
-                if (!endpoint && prevE != null && prevE == earKey) {
+                Integer prevE = LAST_CAPSULE_AOD_KEY.get(earView);
+                if (!endpoint && prevE != null && prevE == capsuleAodKey) {
                     continue;
                 }
-                LAST_EAR_VER.put(earView, earKey);
-                syncProxyBlurConfig(cl, proxy, cfg, rawAodProg, true);
-                if (smoothProxy != null && smoothProxy != proxy) {
-                    syncProxyBlurConfig(cl, smoothProxy, cfg, rawAodProg, true);
-                }
+                LAST_CAPSULE_AOD_KEY.put(earView, capsuleAodKey);
+                applyCapsuleHolderAodLightOnly(cl, earView, eased, endpoint);
                 earView.invalidate();
             }
 
@@ -4419,6 +4162,13 @@ public final class FluidCloudHook {
         if (targetMix == null) {
             return true;
         }
+        if (pbd == null || bd == null || !Boolean.TRUE.equals(callNoArg(bd, "getEnableShader"))) {
+            return false;
+        }
+        Object curPbdMix = callNoArg(pbd, "getCurrentBlurMixConfig");
+        if (curPbdMix == null || curPbdMix.getClass() != targetMix.getClass()) {
+            return false;
+        }
         if (Boolean.TRUE.equals(callChangeBlurColor(cl, pbd, targetMix, true))) {
             callSetter(pbd, "setCurrentBlurMixConfig", C_MIX_CFG, cl, targetMix);
             if (bd instanceof Drawable) {
@@ -4477,7 +4227,7 @@ public final class FluidCloudHook {
     }
 
     private static void applyBlurMixAndLight(ClassLoader cl, Object proxy, Object blurCfg,
-                                             Object targetMix, boolean isCapsule,
+                                             Object targetMix,
                                              float aodForLight, float rawAodProgress,
                                              boolean fastTransition) {
         if (proxy == null || blurCfg == null) {
@@ -4489,7 +4239,7 @@ public final class FluidCloudHook {
                 callSetter(blurCfg, "setPlatformMixConfig", C_MIX_CFG, cl, targetMix);
             }
         }
-        applyAodToBlurConfigLight(blurCfg, isCapsule, aodForLight);
+        applyAodToBlurConfigLight(blurCfg, false, aodForLight);
 
         float blurAmount = readFloatField(proxy, "blurAmount", 1.0f);
         int scaleBits = Float.floatToRawIntBits(blurAmount);
@@ -4501,7 +4251,10 @@ public final class FluidCloudHook {
             callOneBool(pbd, "setAodState", false);
             callOneBool(pbd, "setAodDirty", false);
             Object curPbdMix = callNoArg(pbd, "getCurrentBlurMixConfig");
-            if (fastTransition && !blurScaleChanged && curPbdMix != null) {
+            boolean useFast = fastTransition
+                    && rawAodProgress > 0.001f && rawAodProgress < 0.999f
+                    && !blurScaleChanged && curPbdMix != null;
+            if (useFast) {
                 Object bd = callNoArg(pbd, "getBlurDrawable");
                 if (bd != null) {
                     Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
@@ -4517,58 +4270,9 @@ public final class FluidCloudHook {
                     }
                 }
             }
-            if (targetMix != null) {
-                callSetter(pbd, "setCurrentBlurMixConfig", C_MIX_CFG, cl, targetMix);
-            }
         }
         LAST_BLUR_SCALE_BITS.put(proxy, scaleBits);
         callNoArg(proxy, "applyBlurConfig");
-    }
-
-    private static void syncBlurConfigLive(ClassLoader cl, Object blurCfg, Object proxy,
-                                           ConfigStore.HookConfig cfg, boolean isCapsule,
-                                           float aodProgress) {
-        syncBlurConfigLive(cl, blurCfg, proxy, cfg, isCapsule, aodProgress, false);
-    }
-
-    private static void syncBlurConfigLive(ClassLoader cl, Object blurCfg, Object proxy,
-                                           ConfigStore.HookConfig cfg, boolean isCapsule,
-                                           float aodProgress, boolean fastTransition) {
-        try {
-            float rawAod = clamp01(aodProgress);
-            float easedAod = easeAodProgress(rawAod);
-            Object curMix = callNoArg(blurCfg, "getPlatformMixConfig");
-            Object origMix = ORIG_MIX_BY_CFG.get(blurCfg);
-            if (origMix == null) {
-                Object stockFallback = isCapsule ? sStockCapsuleMix : sStockCustomMix;
-                if (curMix != null && !Boolean.TRUE.equals(BUILT_MIX_SET.get(curMix)) && rawAod <= 0.001f) {
-                    origMix = curMix;
-                } else {
-                    origMix = stockFallback != null ? stockFallback
-                            : (curMix != null && !Boolean.TRUE.equals(BUILT_MIX_SET.get(curMix)) ? curMix : null);
-                }
-                if (origMix != null) {
-                    ORIG_MIX_BY_CFG.put(blurCfg, origMix);
-                }
-            }
-            Object targetMix = origMix;
-            if (origMix != null) {
-                Object vObj = proxy != null ? callNoArg(proxy, "getView") : null;
-                View proxyView = vObj instanceof View ? (View) vObj : null;
-                boolean allowCustom = isCapsule
-                        ? !shouldSuppressCapsuleCustomColor(proxyView, cfg)
-                        : !(DynamicIslandHook.hasActiveLockMediaFluidCloud()
-                                && (cfg.isFcNonMediaMaskEnabled() || sLastLockCustomRowIsMedia));
-                targetMix = (cfg.isFcEnabled() && (cfg.isFcLockTintOrMaskModified() || rawAod > 0.001f))
-                        ? buildMix(cl, cfg, origMix, rawAod, allowCustom)
-                        : origMix;
-            }
-            boolean radiusChanged = applyScaledBlurRadius(blurCfg, cfg, cfg.isFcEnabled());
-            float aodForLight = cfg.isFcEnabled() ? easedAod : 0.0f;
-            applyBlurMixAndLight(cl, proxy, blurCfg, targetMix, isCapsule, aodForLight, rawAod,
-                    fastTransition && !radiusChanged);
-        } catch (Throwable ignored) {
-        }
     }
 
     private static void applyAodToBlurConfigLight(Object blurCfg, boolean isCapsule, float aodProgress) {
@@ -4578,6 +4282,15 @@ public final class FluidCloudHook {
         try {
             Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
             Object isp = callNoArg(blurCfg, "getInnerShadowParams");
+            if (!isCapsule) {
+                if (stroke != null) {
+                    NORMAL_STROKE_SET.remove(stroke);
+                }
+                if (isp != null) {
+                    NORMAL_SHADOW_SET.remove(isp);
+                }
+                ensureWhiteStrokeShadow(stroke, isp);
+            }
             if (stroke == null && isp == null) {
                 return;
             }
@@ -4618,6 +4331,52 @@ public final class FluidCloudHook {
                 callOneFloat(isp, "setOffsetShadowMaxAlpha", orig[2] * innerFactor);
                 callOneFloat(isp, "setOffsetShadowMinAlpha", orig[3] * innerFactor);
                 callOneFloat(isp, "setNoOffsetShadowAlpha", orig[4] * innerFactor);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void syncCustomRowMultiPlatformHelper(ClassLoader cl, Object proxy,
+                                                       ConfigStore.HookConfig cfg,
+                                                       Object targetMix, boolean blurScaleOn) {
+        if (proxy == null) {
+            return;
+        }
+        try {
+            Object multiHelper = callNoArg(proxy, "getMultiPlatformBlurHelper");
+            Object cfgMapObj = multiHelper != null ? readField(multiHelper, "configMap") : null;
+            if (!(cfgMapObj instanceof Map) || ((Map<?, ?>) cfgMapObj).isEmpty()) {
+                return;
+            }
+            boolean dirty = false;
+            for (Object entryObj : ((Map<?, ?>) cfgMapObj).entrySet()) {
+                if (!(entryObj instanceof Map.Entry)) {
+                    continue;
+                }
+                Object stackCfg = ((Map.Entry<?, ?>) entryObj).getValue();
+                if (stackCfg == null) {
+                    continue;
+                }
+                Object sStroke = callNoArg(stackCfg, "getGradientStrokeLineParam");
+                Object sIsp = callNoArg(stackCfg, "getInnerShadowParams");
+                if (sStroke != null) {
+                    NORMAL_STROKE_SET.remove(sStroke);
+                }
+                if (sIsp != null) {
+                    NORMAL_SHADOW_SET.remove(sIsp);
+                }
+                dirty |= ensureWhiteStrokeShadow(sStroke, sIsp);
+                dirty |= applyScaledBlurRadius(stackCfg, cfg, blurScaleOn);
+                if (targetMix != null) {
+                    Object curStackMix = callNoArg(stackCfg, "getPlatformMixConfig");
+                    if (curStackMix != targetMix) {
+                        callSetter(stackCfg, "setPlatformMixConfig", C_MIX_CFG, cl, targetMix);
+                        dirty = true;
+                    }
+                }
+            }
+            if (dirty) {
+                callNoArg(multiHelper, "applyBlurConfig");
             }
         } catch (Throwable ignored) {
         }
@@ -4676,19 +4435,17 @@ public final class FluidCloudHook {
                 return;
             }
             if (wantActive) {
-                if (origMix != null) {
-                    float targetOp = atImmersive ? cfg.getFcImmersiveOpacity() : cfg.getFcOpacity();
-                    boolean customMixOn = atImmersive
-                            ? (cfg.isFcLockTintOrMaskModified() || cfg.isFcImmersiveOpacityModified())
-                            : cfg.isFcLockTintOrMaskModified();
-                    Object targetMix = buildMixForOpacity(cl, cfg, origMix, rawAod, targetOp, customMixOn,
-                            !shouldSuppressLockCustomColor(rowView, cfg));
-                    LOCK_CUSTOM_MIX_APPLIED.put(blurCfg, Boolean.TRUE);
-                    applyBlurMixAndLight(cl, proxy, blurCfg, targetMix, false, easedAod, rawAod,
-                            fastTransition && !radiusChanged);
-                } else if (radiusChanged) {
-                    callNoArg(proxy, "applyBlurConfig");
-                }
+                float targetOp = atImmersive ? cfg.getFcImmersiveOpacity() : cfg.getFcOpacity();
+                boolean customMixOn = atImmersive
+                        ? (cfg.isFcLockTintOrMaskModified() || cfg.isFcImmersiveOpacityModified())
+                        : cfg.isFcLockTintOrMaskModified();
+                Object templateMix = origMix != null ? origMix : curMix;
+                Object targetMix = buildMixForOpacity(cl, cfg, templateMix, rawAod, targetOp, customMixOn,
+                        !shouldSuppressLockCustomColor(rowView, cfg));
+                LOCK_CUSTOM_MIX_APPLIED.put(blurCfg, Boolean.TRUE);
+                applyBlurMixAndLight(cl, proxy, blurCfg, targetMix, easedAod, rawAod,
+                        fastTransition && !radiusChanged);
+                syncCustomRowMultiPlatformHelper(cl, proxy, cfg, targetMix, cfg.isFcEnabled());
                 if (ext != null) {
                     callSetterAllowNull(ext, "setPanoramicAodDrawable",
                             "android.graphics.drawable.Drawable", cl, null);
@@ -4697,13 +4454,17 @@ public final class FluidCloudHook {
                 if (LOCK_CUSTOM_MIX_APPLIED.remove(blurCfg) != null
                         || (curMix != null && Boolean.TRUE.equals(BUILT_MIX_SET.get(curMix)))) {
                     if (origMix != null) {
-                        applyBlurMixAndLight(cl, proxy, blurCfg, origMix, false, 0.0f, 0.0f,
+                        applyBlurMixAndLight(cl, proxy, blurCfg, origMix, 0.0f, 0.0f,
                                 fastTransition && !radiusChanged);
                     } else if (radiusChanged) {
                         callNoArg(proxy, "applyBlurConfig");
                     }
-                } else if (radiusChanged) {
-                    callNoArg(proxy, "applyBlurConfig");
+                    syncCustomRowMultiPlatformHelper(cl, proxy, cfg, origMix, false);
+                } else {
+                    if (radiusChanged) {
+                        callNoArg(proxy, "applyBlurConfig");
+                    }
+                    syncCustomRowMultiPlatformHelper(cl, proxy, cfg, null, false);
                 }
             }
         } catch (Throwable ignored) {
@@ -4787,9 +4548,6 @@ public final class FluidCloudHook {
             }
             boolean onLock = isCustomOnLockscreen(mgr, null);
             boolean isMedia = isMediaCustomRow(rowView);
-            if (onLock) {
-                sLastLockCustomRowIsMedia = isMedia;
-            }
             META_DRAWABLE_IS_MEDIA.put(metaDrawable, isMedia);
             IN_CUSTOM_MASK_SYNC.set(Boolean.TRUE);
             try {
@@ -4984,23 +4742,30 @@ public final class FluidCloudHook {
             float[] rgb = new float[]{1.0f, 1.0f, 1.0f};
             boolean colored = false;
             boolean isMediaRow = isMediaCustomRow(rowView);
+            boolean suppressCustomGlow = shouldSuppressLockCustomColor(rowView, cfg);
+            boolean hasCustomGlow = !suppressCustomGlow && cfg.isFcCustomGlowEnabled();
+            int customGlowArgb = hasCustomGlow ? cfg.getFcCustomGlowColor() : 0;
+            float customGlowAlpha = hasCustomGlow ? ConfigStore.colorAlphaScale(customGlowArgb) : 1.0f;
+            if (hasCustomGlow && customGlowAlpha <= 0.001f) {
+                return;
+            }
+            float effBright = (hasCustomGlow && brightBoost <= 0.001f) ? 0.28f : brightBoost;
             int mediaTintArgb = DynamicIslandHook.resolveScopedMediaTintArgb(isMediaRow, false, true);
             if ((isMediaRow || cfg.isFcNonMediaMaskEnabled())
                     && mediaTintArgb != 0) {
                 DynamicIslandHook.boostHighlightChromaArgb(
-                        mediaTintArgb, chromaBoost, brightBoost, rgb);
+                        mediaTintArgb, chromaBoost, effBright, rgb);
                 colored = true;
-            } else if (!shouldSuppressLockCustomColor(rowView, cfg) && cfg.isFcColorEnabled()
-                    && ((cfg.getFcColor() >>> 24) & 0xFF) > 0) {
-                float ca = ConfigStore.colorAlphaScale(cfg.getFcColor());
+            } else if (hasCustomGlow) {
                 DynamicIslandHook.boostHighlightChromaArgb(
-                        cfg.getFcColor(), chromaBoost * ca, brightBoost, rgb);
+                        customGlowArgb, chromaBoost, effBright, rgb);
                 colored = true;
             }
 
-            float shadowA = (colored ? 0.44f : 0.36f) * (float) Math.pow(brightBoost, colored ? 0.80 : 0.85) * alphaMul;
-            float rimA = (colored ? 0.78f : 0.68f) * (float) Math.pow(brightBoost, colored ? 0.80 : 0.85) * alphaMul;
-            float rimFade = (6.0f + 5.0f * brightBoost) * s;
+            float glowAlphaScale = hasCustomGlow ? customGlowAlpha : 1.0f;
+            float shadowA = (colored ? 0.44f : 0.36f) * (float) Math.pow(effBright, colored ? 0.80 : 0.85) * alphaMul * glowAlphaScale;
+            float rimA = (colored ? 0.78f : 0.68f) * (float) Math.pow(effBright, colored ? 0.80 : 0.85) * alphaMul * glowAlphaScale;
+            float rimFade = (6.0f + 5.0f * effBright) * s;
 
             shader.setFloatUniform("uSize", (float) w, (float) h);
             shader.setFloatUniform("uRadius", cornerRadius);
@@ -5017,7 +4782,7 @@ public final class FluidCloudHook {
 
             int sc = canvas.save();
             try {
-                canvas.translate(bounds.left + (int) tx, bounds.top);
+                canvas.translate(bounds.left, bounds.top);
                 canvas.drawRect(0f, 0f, (float) w, (float) h, paint);
             } finally {
                 canvas.restoreToCount(sc);
@@ -5196,8 +4961,9 @@ public final class FluidCloudHook {
                 alphaNear = orig[0] * aod;
             } else {
                 float boost = clamp01(boostPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW);
-                alphaNear = clamp01(orig[0] + (1.0f - orig[0]) * boost) * aod;
-                nearFade = orig[1] * (1.0f + 0.85f * boost);
+                float targetAlpha = Math.max(orig[0], 0.78f);
+                alphaNear = clamp01(orig[0] + (targetAlpha - orig[0]) * boost) * aod;
+                nearFade = orig[1] * (1.0f + 0.35f * boost);
             }
             callOneFloat(params, "setStrokeLineAlphaNear", alphaNear);
             callOneFloat(params, "setStrokeLineVerticalNearFade", nearFade);
@@ -5258,7 +5024,8 @@ public final class FluidCloudHook {
                 maxA = orig[0] * aod;
             } else {
                 float boost = clamp01(boostPct / (float) ConfigStore.MAX_FC_BOTTOM_GLOW);
-                maxA = clamp01(orig[0] + (0.62f - orig[0]) * boost) * aod;
+                float targetMax = Math.max(orig[0], 0.46f);
+                maxA = clamp01(orig[0] + (targetMax - orig[0]) * boost) * aod;
             }
 
             callOneFloat(params, "setOffsetShadowMaxAlpha", maxA);
@@ -5425,13 +5192,14 @@ public final class FluidCloudHook {
         int lockRgb = CLEAN_GLASS_RGB;
         int lockTopA = 174;
         int lockLiftRgb = 0xB3B3B3;
+        boolean useCustom = useCustomMix && allowCustomColor && cfg.isFcColorEnabled();
+        float colorAlpha = 1.0f;
         if (useCustomMix) {
-            boolean useCustom = allowCustomColor && cfg.isFcColorEnabled();
             if (useCustom) {
                 int customColor = cfg.getFcColor();
-                float colorAlpha = ConfigStore.colorAlphaScale(customColor);
+                colorAlpha = ConfigStore.colorAlphaScale(customColor);
                 lockRgb = customColor & 0x00FFFFFF;
-                lockTopA = clampAlpha(Math.round(189.0f * opacity * colorAlpha));
+                lockTopA = clampAlpha(Math.round(235.0f * opacity * colorAlpha));
                 int cr = (customColor >> 16) & 0xFF;
                 int cg = (customColor >> 8) & 0xFF;
                 int cb = customColor & 0xFF;
@@ -5462,7 +5230,8 @@ public final class FluidCloudHook {
             topA = clampAlpha(Math.round(lockTopA + (AOD_WIDGET_ALPHA - lockTopA) * aod));
         }
         int newTop = (topA << 24) | rgb;
-        int liftA = clampAlpha(Math.round(77.0f * (1.0f - aod)));
+        float customLiftScale = useCustom ? (1.0f - clamp01(opacity * colorAlpha)) : 1.0f;
+        int liftA = clampAlpha(Math.round(77.0f * (1.0f - aod) * customLiftScale));
         int liftColor = liftA > 0 ? ((liftA << 24) | lockLiftRgb) : 0;
         return new int[]{newTop, liftColor};
     }
@@ -6157,5 +5926,440 @@ public final class FluidCloudHook {
         } catch (Throwable ignored) {
         }
         return null;
+    }
+
+    private static View findAncestorByClassName(View start, String clsName) {
+        View cur = start;
+        for (int depth = 0; depth < 14 && cur != null; depth++) {
+            if (clsName.equals(cur.getClass().getName())) {
+                return cur;
+            }
+            ViewParent p = cur.getParent();
+            cur = (p instanceof View) ? (View) p : null;
+        }
+        return null;
+    }
+
+    private static View resolveOverlayAuthorRow(View overlayBgView) {
+        if (overlayBgView == null) {
+            return null;
+        }
+        WeakReference<View> ref = OVERLAY_TO_AUTHOR_ROW.get(overlayBgView);
+        if (ref != null) {
+            View v = ref.get();
+            if (v != null && v.isAttachedToWindow()) {
+                return v;
+            }
+        }
+        View parentCustom = findAncestorByClassName(overlayBgView, C_CUSTOM_ROW_VIEW);
+        if (parentCustom != null) {
+            return parentCustom;
+        }
+        return findAncestorByClassName(overlayBgView, C_EXPANDABLE_NOTIF_ROW);
+    }
+
+    private static boolean isAllowedNormalNotifHighlightOwner(View owner) {
+        if (owner == null) {
+            return false;
+        }
+        String cls = owner.getClass().getName();
+        if (C_MEDIA_CAROUSEL.equals(cls) || C_CUSTOM_ROW_VIEW.equals(cls) || cls.contains("MediaContainer")) {
+            return false;
+        }
+        if (C_OVERLAY_BG_VIEW.equals(cls)) {
+            View author = resolveOverlayAuthorRow(owner);
+            return author != null && C_EXPANDABLE_NOTIF_ROW.equals(author.getClass().getName());
+        }
+        if (findAncestorByClassName(owner, C_CUSTOM_ROW_VIEW) != null
+                || findAncestorByClassName(owner, C_MEDIA_CAROUSEL) != null) {
+            return false;
+        }
+        ViewParent vp = owner.getParent();
+        if (vp instanceof View && C_EXPANDABLE_NOTIF_ROW.equals(vp.getClass().getName())) {
+            return true;
+        }
+        return findAncestorByClassName(owner, C_EXPANDABLE_NOTIF_ROW) != null;
+    }
+
+    private static boolean isMediaCustomRowFromOwnerView(View ownerView) {
+        if (ownerView == null) {
+            return false;
+        }
+        View customRow = C_CUSTOM_ROW_VIEW.equals(ownerView.getClass().getName())
+                ? ownerView
+                : findAncestorByClassName(ownerView, C_CUSTOM_ROW_VIEW);
+        return customRow != null && isMediaCustomRow(customRow);
+    }
+
+    private static boolean scrubMediaMultiHelper(ClassLoader cl, Object proxy, boolean restoreOrig, boolean tagAsMedia) {
+        if (proxy == null) {
+            return false;
+        }
+        boolean changed = false;
+        Object multiHelper = callNoArg(proxy, "getMultiPlatformBlurHelper");
+        Object cfgMapObj = multiHelper != null ? readField(multiHelper, "configMap") : null;
+        if (!(cfgMapObj instanceof Map)) {
+            return false;
+        }
+        for (Object entryObj : ((Map<?, ?>) cfgMapObj).entrySet()) {
+            if (!(entryObj instanceof Map.Entry)) {
+                continue;
+            }
+            Map.Entry<?, ?> entry = (Map.Entry<?, ?>) entryObj;
+            Object stackCfg = entry.getValue();
+            if (stackCfg == null) {
+                continue;
+            }
+            Object sStroke = callNoArg(stackCfg, "getGradientStrokeLineParam");
+            Object sIsp = callNoArg(stackCfg, "getInnerShadowParams");
+            if (sStroke != null) {
+                NORMAL_STROKE_SET.remove(sStroke);
+                if (tagAsMedia) {
+                    MEDIA_STROKE_SET.put(sStroke, Boolean.TRUE);
+                }
+            }
+            if (sIsp != null) {
+                NORMAL_SHADOW_SET.remove(sIsp);
+                if (tagAsMedia) {
+                    MEDIA_SHADOW_SET.put(sIsp, Boolean.TRUE);
+                }
+            }
+            boolean itemChanged = ensureWhiteStrokeShadow(sStroke, sIsp);
+            if (restoreOrig) {
+                if (sStroke != null) {
+                    itemChanged |= restoreStrokeParams(sStroke);
+                }
+                if (sIsp != null) {
+                    itemChanged |= restoreShadowParams(sIsp);
+                }
+            }
+            changed |= itemChanged;
+            Object kObj = entry.getKey();
+            if (itemChanged && kObj instanceof Integer) {
+                Object stackPbd = callOneInt(multiHelper, "getStackCacheBlurDrawable", (Integer) kObj);
+                Object stackBd = stackPbd != null ? callNoArg(stackPbd, "getBlurDrawable") : null;
+                if (stackBd != null) {
+                    if (sStroke != null) {
+                        callSetter(stackBd, "setGradientStrokeLineParams", C_STROKE_PARAMS, cl, sStroke);
+                    }
+                    if (sIsp != null) {
+                        callSetter(stackBd, "setInnerShadowParams", C_INNER_SHADOW_PARAMS, cl, sIsp);
+                    }
+                    if (stackBd instanceof Drawable) {
+                        ((Drawable) stackBd).invalidateSelf();
+                    }
+                }
+                if (stackPbd instanceof Drawable) {
+                    ((Drawable) stackPbd).invalidateSelf();
+                }
+            }
+        }
+        return changed;
+    }
+
+    private static boolean scrubProxyHighlightToWhite(ClassLoader cl, Object proxy) {
+        if (proxy == null) {
+            return false;
+        }
+        boolean changed = false;
+        Object blurCfg = getProxyBlurConfig(proxy);
+        if (blurCfg != null) {
+            Object stroke = callNoArg(blurCfg, "getGradientStrokeLineParam");
+            Object isp = callNoArg(blurCfg, "getInnerShadowParams");
+            if (stroke != null) {
+                NORMAL_STROKE_SET.remove(stroke);
+            }
+            if (isp != null) {
+                NORMAL_SHADOW_SET.remove(isp);
+            }
+            changed |= ensureWhiteStrokeShadow(stroke, isp);
+            if (stroke != null) {
+                changed |= restoreStrokeParams(stroke);
+            }
+            if (isp != null) {
+                changed |= restoreShadowParams(isp);
+            }
+            if (changed) {
+                Object pbd = resolvePlatformBlurDrawable(cl, proxy);
+                Object bd = pbd != null ? callNoArg(pbd, "getBlurDrawable") : null;
+                if (bd != null) {
+                    if (stroke != null) {
+                        callSetter(bd, "setGradientStrokeLineParams", C_STROKE_PARAMS, cl, stroke);
+                    }
+                    if (isp != null) {
+                        callSetter(bd, "setInnerShadowParams", C_INNER_SHADOW_PARAMS, cl, isp);
+                    }
+                    if (bd instanceof Drawable) {
+                        ((Drawable) bd).invalidateSelf();
+                    }
+                }
+                if (pbd instanceof Drawable) {
+                    ((Drawable) pbd).invalidateSelf();
+                }
+            }
+        }
+        changed |= scrubMediaMultiHelper(cl, proxy, true, false);
+        return changed;
+    }
+
+    private static boolean hookNotificationOverlayController(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
+        try {
+            Class<?> ctrlCls = loadClass(C_OVERLAY_CTRL, cl);
+            if (ctrlCls == null) {
+                return false;
+            }
+            boolean ok = false;
+            int bindCount = XposedCompat.hookAllMethods(ctrlCls, "bindAuthorView", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    Object ovBgObj = readField(param.thisObject, "overlayBackgroundView");
+                    if (!(ovBgObj instanceof View)) {
+                        return;
+                    }
+                    View ovBg = (View) ovBgObj;
+                    View author = (param.args.length > 0 && param.args[0] instanceof View)
+                            ? (View) param.args[0] : null;
+                    if (author != null) {
+                        OVERLAY_TO_AUTHOR_ROW.put(ovBg, new WeakReference<>(author));
+                    } else {
+                        OVERLAY_TO_AUTHOR_ROW.remove(ovBg);
+                    }
+                    boolean normalAuthor = author != null && C_EXPANDABLE_NOTIF_ROW.equals(author.getClass().getName());
+                    if (!normalAuthor) {
+                        Object proxy = readField(ovBg, "currentBlurProxy");
+                        if (proxy != null && scrubProxyHighlightToWhite(cl, proxy)) {
+                            callNoArg(proxy, "applyBlurConfig");
+                        }
+                    }
+                }
+            }).size();
+            if (bindCount > 0) {
+                ok = true;
+            }
+            int unbindCount = XposedCompat.hookAllMethods(ctrlCls, "unbindAuthorView", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    Object ovBgObj = readField(param.thisObject, "overlayBackgroundView");
+                    if (!(ovBgObj instanceof View)) {
+                        return;
+                    }
+                    View ovBg = (View) ovBgObj;
+                    OVERLAY_TO_AUTHOR_ROW.remove(ovBg);
+                    Object proxy = readField(ovBg, "currentBlurProxy");
+                    if (proxy != null && scrubProxyHighlightToWhite(cl, proxy)) {
+                        callNoArg(proxy, "applyBlurConfig");
+                    }
+                }
+            }).size();
+            if (unbindCount > 0) {
+                ok = true;
+            }
+            return ok;
+        } catch (Throwable t) {
+            cfg.note("FluidCloud NotificationOverlayController hook err: " + t);
+            return false;
+        }
+    }
+
+    private static boolean isImmersiveProgressAnimating(View rowView, ClassLoader cl) {
+        if (rowView == null) {
+            return false;
+        }
+        if (!sImmersiveAnimTagProbed) {
+            sImmersiveAnimTagProbed = true;
+            try {
+                Class<?> cls = loadClass(C_EXPANDABLE_VIEW_STATE_EX, cl);
+                Object prop = cls != null ? readStaticField(cls, "ANIMATION_IMMERSIVE_PROGRESS_PROPERTY") : null;
+                if (prop != null) {
+                    Object tagObj = callNoArg(prop, "getAnimatorTag");
+                    if (tagObj instanceof Integer) {
+                        sImmersiveAnimTag = (Integer) tagObj;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        int tag = sImmersiveAnimTag;
+        return tag != 0 && rowView.getTag(tag) != null;
+    }
+
+    private static boolean isRowStuckImmersive(View rowView, ClassLoader cl) {
+        if (rowView == null || !rowView.isAttachedToWindow()) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(TL_IN_IMMERSIVE_RESET.get())) {
+            return false;
+        }
+        if (readRowImmersiveProgress(rowView) <= 0.01f) {
+            return false;
+        }
+        if (sLockExtStateTracked && sLockExtState == 2) {
+            return false;
+        }
+        if (isImmersiveProgressAnimating(rowView, cl)) {
+            return false;
+        }
+        long sinceExit = SystemClock.uptimeMillis() - sLastExitImmersiveMs;
+        if (sLastExitImmersiveMs > 0L && sinceExit < 220L) {
+            return false;
+        }
+        return sLockExtStateTracked ? (sLockExtState != 2) : rowView.isShown();
+    }
+
+    private static void scheduleStuckImmersiveReconcile(View rowView, final ClassLoader cl,
+                                                        final ConfigStore.HookConfig cfg) {
+        if (rowView == null) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        Long last = LAST_STUCK_IMM_POST_MS.get(rowView);
+        if (last != null && (now - last) < 300L) {
+            return;
+        }
+        LAST_STUCK_IMM_POST_MS.put(rowView, now);
+        MAIN_HANDLER.post(new Runnable() {
+            @Override
+            public void run() {
+                reconcileStuckImmersiveRows(cl, cfg);
+            }
+        });
+    }
+
+    private static void reconcileStuckImmersiveRows(ClassLoader cl, ConfigStore.HookConfig cfg) {
+        if (Boolean.TRUE.equals(TL_IN_IMMERSIVE_RESET.get())) {
+            return;
+        }
+        ArrayList<View> rows;
+        synchronized (ACTIVE_CUSTOM_ROWS) {
+            if (ACTIVE_CUSTOM_ROWS.isEmpty()) {
+                return;
+            }
+            rows = new ArrayList<>(ACTIVE_CUSTOM_ROWS.keySet());
+        }
+        TL_IN_IMMERSIVE_RESET.set(Boolean.TRUE);
+        try {
+            ClassLoader effCl = cl != null ? cl : sPrimaryCl;
+            for (int i = 0, n = rows.size(); i < n; i++) {
+                View rowView = rows.get(i);
+                if (rowView == null || !rowView.isAttachedToWindow()) {
+                    continue;
+                }
+                if (readRowImmersiveProgress(rowView) <= 0.01f) {
+                    continue;
+                }
+                if (sLockExtStateTracked && sLockExtState == 2) {
+                    continue;
+                }
+                if (isImmersiveProgressAnimating(rowView, effCl)) {
+                    continue;
+                }
+                Object ex = readField(rowView, "mExpandableViewEx");
+                if (ex != null) {
+                    callOneFloat(ex, "setImmersiveProgress", 0.0f);
+                }
+                callOneFloat(rowView, "setImmersiveProgress", 0.0f);
+                LAST_ROW_IMMERSIVE_PROG.put(rowView, 0.0f);
+                LAST_CUSTOM_LOCK_STATE.remove(rowView);
+                LAST_CUSTOM_MIX_VER.remove(rowView);
+                LAST_CUSTOM_MASK_VER.remove(rowView);
+                LAST_DRIFT_CHECK_MS.remove(rowView);
+                Object mgr = readField(rowView, "viewBlurManager");
+                boolean onLock = isCustomOnLockscreen(mgr, null);
+                float rawAod = onLock ? resolveLiveAodProgress(null) : 0.0f;
+                if (onLock && cfg != null && cfg.isFcEnabled()) {
+                    syncRowImmersiveEndColors(rowView, cfg, true, rawAod);
+                    syncCustomRowLockMix(effCl, rowView, cfg, rawAod, true);
+                    syncCustomRowMask(effCl, rowView, mgr, cfg, true);
+                }
+                rowView.invalidate();
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            TL_IN_IMMERSIVE_RESET.remove();
+        }
+    }
+
+    private static void triggerDelayedImmersiveReconcile(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
+        sLastExitImmersiveMs = SystemClock.uptimeMillis();
+        MAIN_HANDLER.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                reconcileStuckImmersiveRows(cl, cfg);
+            }
+        }, 280L);
+    }
+
+    private static boolean hookLockExtState(final ClassLoader cl, final ConfigStore.HookConfig cfg) {
+        try {
+            boolean ok = false;
+            Class<?> extMgrCls = loadClass(C_EXT_STATE_MGR, cl);
+            if (extMgrCls != null) {
+                int goCount = XposedCompat.hookAllMethods(extMgrCls, "goToExtState", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (param.args.length >= 2 && param.args[1] instanceof Integer) {
+                            int prev = sLockExtState;
+                            int next = (Integer) param.args[1];
+                            sLockExtState = next;
+                            sLockExtStateTracked = true;
+                            if (next != 2 && (prev == 2 || !sLockExtStateTracked || prev != next)) {
+                                triggerDelayedImmersiveReconcile(cl, cfg);
+                            }
+                        }
+                    }
+                }).size();
+                if (goCount > 0) {
+                    ok = true;
+                }
+                int exitCount = XposedCompat.hookAllMethods(extMgrCls, "handleExitKeyguard", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        Object st = callNoArg(param.thisObject, "getExtState");
+                        if (st instanceof Integer) {
+                            sLockExtState = (Integer) st;
+                            sLockExtStateTracked = true;
+                        }
+                        if (sLockExtState != 2) {
+                            triggerDelayedImmersiveReconcile(cl, cfg);
+                        }
+                    }
+                }).size();
+                if (exitCount > 0) {
+                    ok = true;
+                }
+            }
+            Class<?> immMgrCls = loadClass(C_IMMERSIVE_VIEW_MGR, cl);
+            if (immMgrCls != null) {
+                int unbindCount = XposedCompat.hookAllMethods(immMgrCls, "unBindForStack", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (sLockExtState != 2) {
+                            triggerDelayedImmersiveReconcile(cl, cfg);
+                        }
+                    }
+                }).size();
+                if (unbindCount > 0) {
+                    ok = true;
+                }
+            }
+            Class<?> immCardCls = loadClass(C_IMMERSIVE_CARD_CTRL, cl);
+            if (immCardCls != null) {
+                int clearCount = XposedCompat.hookAllMethods(immCardCls, "clearFocusCard", new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        if (sLockExtState != 2) {
+                            triggerDelayedImmersiveReconcile(cl, cfg);
+                        }
+                    }
+                }).size();
+                if (clearCount > 0) {
+                    ok = true;
+                }
+            }
+            return ok;
+        } catch (Throwable t) {
+            cfg.note("FluidCloud LockExtState hook err: " + t);
+            return false;
+        }
     }
 }

@@ -35,5 +35,6 @@ public final class FpOverlapModule extends XposedModule {
         FpIconOverlapFadeHook.install(cl, cfg);
         FluidCloudHook.install(cl, cfg);
         DynamicIslandHook.install(cl, cfg);
+        LockscreenBlurGuardHook.install(cl, cfg);
     }
 }

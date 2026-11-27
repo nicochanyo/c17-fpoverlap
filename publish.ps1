@@ -74,7 +74,7 @@ if (-not (Test-Path -LiteralPath $apkPath)) {
 
 # 3. Extract changelog for current version from strings.xml
 Write-Step "提取 v$versionName 更新日誌"
-$changelogKey = "changelog_v" + ($versionName -replace '\.', '') + "_body"
+$changelogKey = "changelog_v" + ($versionName -replace '\.', '' -replace '[^a-zA-Z0-9]+', '_').ToLowerInvariant() + "_body"
 
 function Get-StringResource([string]$XmlPath, [string]$KeyName) {
     if (-not (Test-Path -LiteralPath $XmlPath)) { return $null }

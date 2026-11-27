@@ -382,6 +382,10 @@ public final class FpIconOverlapFadeHook {
         }
     }
 
+    static boolean isLockscreenInImmersiveState() {
+        return readExtState(sUiMech) == 2;
+    }
+
     private static View findVisibleBottomCapsule(ViewGroup container, Object immersiveCard) {
         Class<?> itemCls = sCapsuleItemClass;
         int count = container.getChildCount();

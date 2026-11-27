@@ -18,11 +18,11 @@
     <!-- Top Status Card -->
     <string name="status_title_active">模組已啟用</string>
     <string name="status_title_inactive">模組未啟用</string>
-    <string name="status_sub_active">v1.1.2 (1102) · com.android.systemui</string>
+    <string name="status_sub_active">v1.1.3 (1103) · com.android.systemui</string>
     <string name="status_sub_inactive">請在 LSPosed 勾選「系統介面」並重啟</string>
     <string name="badge_api_102">API 102</string>
 
-    <string name="chip_version">v1.1.2</string>
+    <string name="chip_version">v1.1.3</string>
     <string name="chip_lsposed">API 102</string>
 
     <!-- Tab 0: Lockscreen & Fingerprint -->
@@ -77,7 +77,7 @@
     <string name="pref_fc_remove_island_mask_title">移除頂部展開卡片遮罩</string>
     <string name="pref_fc_remove_island_mask_summary">去除頂部展開卡片的黑色漸變遮罩（開啟後該處不顯示遮罩變色）</string>
     <string name="pref_fc_match_card_title">移除鎖屏流體雲遮罩</string>
-    <string name="pref_fc_match_card_summary">去除鎖屏膠囊與卡片的黑色漸變遮罩（開啟後該處不顯示遮罩變色）</string>
+    <string name="pref_fc_match_card_summary">去除鎖屏流體雲卡片的黑色漸變遮罩（開啟後該處不顯示遮罩變色）</string>
     <string name="pref_fc_remove_shade_mask_title">移除通知列流體雲遮罩</string>
     <string name="pref_fc_remove_shade_mask_summary">去除下拉通知列卡片的黑色漸變遮罩（開啟後該處不顯示遮罩變色）</string>
     <string name="pref_fc_mask_follow_media_title">遮罩跟隨媒體變色</string>
@@ -138,6 +138,8 @@
     <string name="pref_fc_custom_color_summary">非媒體卡片生效，跟隨媒體時讓位</string>
     <string name="pref_fc_custom_mask_color_title">自訂漸變遮罩顏色</string>
     <string name="pref_fc_custom_mask_color_summary">非媒體遮罩生效，跟隨媒體時讓位</string>
+    <string name="pref_fc_custom_glow_color_title">自訂高光顏色</string>
+    <string name="pref_fc_custom_glow_color_summary">非媒體高光生效，跟隨媒體時讓位</string>
     <string name="label_stock_tint">系統預設</string>
     <string name="label_color_value">顏色值</string>
     <string name="dialog_hex_input_hint">輸入 6 位 HEX 色碼（如 4FC3F7）</string>
@@ -196,6 +198,8 @@
     <string name="btn_update_open_repo">開啟倉庫頁面</string>
     <string name="dialog_changelog_title">更新日誌</string>
     <string name="btn_close">關閉</string>
+    <string name="changelog_v113_title">v1.1.3</string>
+    <string name="changelog_v113_body" formatted="false">• 新增「自訂高光顏色」獨立選色板與透明度調節（僅套用於非媒體高光，跟隨媒體變色時自動讓位）\n• 修復自訂卡片底色實際呈現偏暗、與設定色有落差的問題（改採直色混合並同步校準展開卡片與鎖屏透明度上限）\n• 修復部分非常規展開流體雲卡片（如安裝進度卡片）自訂漸變遮罩已上色但卡片底色未覆蓋的問題\n• 修復設定自訂卡片底色會連帶影響手電筒等部分卡片高光顏色的問題\n• 修復設定自訂卡片底色會影響音樂鎖屏下小膠囊顏色的問題\n• 優化卡片收合回流體雲膠囊時的顏色過渡，保留前段流暢感並加快尾段壓暗收斂速度\n• 修復鎖屏與通知欄卡片橫向滑動時漸變遮罩與底部高光錯位的問題\n• 修復鎖屏小工具與底部快捷按鈕偶發性底色異常的問題</string>
     <string name="changelog_v112_title">v1.1.2</string>
     <string name="changelog_v112_body" formatted="false">• 自訂配色改為僅作用於非媒體卡片，媒體卡片及開啟「非媒體卡片跟隨媒體變色」且有媒體活躍時自動讓位給媒體封面色，避免底色與遮罩混色\n• 新增「自訂漸變遮罩顏色」獨立選色板，並為兩者加入 ARGB 透明度滑桿調節\n• 新增版本更新後首次開啟自動彈出更新說明</string>
     <string name="changelog_v111_title">v1.1.1</string>
